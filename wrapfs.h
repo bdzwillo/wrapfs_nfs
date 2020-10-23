@@ -32,6 +32,11 @@
 /* the file system name */
 #define WRAPFS_NAME "wrapfs"
 
+#if 1
+// from magic.h
+#define WRAPFS_SUPER_MAGIC     0xb550ca10
+#endif
+
 /* wrapfs root inode number */
 #define WRAPFS_ROOT_INO     1
 

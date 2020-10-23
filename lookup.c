@@ -11,6 +11,12 @@
 
 #include "wrapfs.h"
 
+#if 1
+// is in fs/internal.h - should be in namei.h
+extern int vfs_path_lookup(struct dentry *, struct vfsmount *,
+                           const char *, unsigned int, struct path *);
+#endif
+
 /* The dentry cache is just so we have properly sized dentries */
 static struct kmem_cache *wrapfs_dentry_cachep;
 
