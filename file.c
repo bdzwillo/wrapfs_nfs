@@ -195,6 +195,7 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 		}
 	} else {
 		wrapfs_set_lower_file(file, lower_file);
+		file->f_mode |= FMODE_KABI_ITERATE;
 	}
 
 	if (err)
