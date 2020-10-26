@@ -30,6 +30,8 @@ static int wrapfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	if (!(lower_dentry->d_flags & DCACHE_OP_REVALIDATE))
 		goto out;
 	err = lower_dentry->d_op->d_revalidate(lower_dentry, flags);
+
+	pr_debug("wrapfs: revalidate(%pd4, 0x%04x) = %d", dentry, flags, err);
 out:
 	wrapfs_put_lower_path(dentry, &lower_path);
 	return err;

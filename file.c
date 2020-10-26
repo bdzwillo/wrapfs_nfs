@@ -55,6 +55,8 @@ static int wrapfs_readdir(struct file *file, struct dir_context *ctx)
 	struct file *lower_file = NULL;
 	struct dentry *dentry = file->f_path.dentry;
 
+	pr_debug("wrapfs: readdir(%pD4)\n", file);
+
 	lower_file = wrapfs_lower_file(file);
 	err = iterate_dir(lower_file, ctx);
 	file->f_pos = lower_file->f_pos;
@@ -113,6 +115,8 @@ static int wrapfs_mmap(struct file *file, struct vm_area_struct *vma)
 	struct file *lower_file;
 	const struct vm_operations_struct *saved_vm_ops = NULL;
 
+	pr_debug("wrapfs: mmap(%pD4, 0x%lx)\n", file, vma->vm_flags);
+
 	/* this might be deferred to mmap's writepage */
 	willwrite = ((vma->vm_flags | VM_SHARED | VM_WRITE) == vma->vm_flags);
 
@@ -168,6 +172,8 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 	int err = 0;
 	struct file *lower_file = NULL;
 	struct path lower_path;
+
+	pr_debug("wrapfs: open(%pD4, %s:%lu, 0%o)\n", file, inode ? inode->i_sb->s_id : "NULL", inode ? inode->i_ino : 0, file->f_flags);
 
 	/* don't open unhashed/deleted files */
 	if (d_unhashed(file->f_path.dentry)) {

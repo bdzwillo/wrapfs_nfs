@@ -299,6 +299,10 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 
 	parent = dget_parent(dentry);
 
+	/* LOOKUP_ flags are defined in include/linux/namei_lookup.h
+	 */
+	pr_debug("wrapfs: lookup(%pd4, 0x%x)\n", dentry, flags);
+
 	wrapfs_get_lower_path(parent, &lower_parent_path);
 
 	/* allocate dentry private data.  We free it in ->d_release */

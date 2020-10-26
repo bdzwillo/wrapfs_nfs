@@ -19,6 +19,10 @@ static int wrapfs_create(struct inode *dir, struct dentry *dentry,
 	struct dentry *lower_parent_dentry = NULL;
 	struct path lower_path;
 
+	/* S_ modes are defined in include/fcntl.h
+	 */
+	pr_debug("wrapfs: create(%pd4, 0%o)\n", dentry, mode);
+
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
 	lower_parent_dentry = lock_parent(lower_dentry);
@@ -48,6 +52,8 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 	u64 file_size_save;
 	int err;
 	struct path lower_old_path, lower_new_path;
+
+	pr_debug("wrapfs: link(%pd4, %pd4)\n", old_dentry, new_dentry);
 
 	file_size_save = i_size_read(old_dentry->d_inode);
 	wrapfs_get_lower_path(old_dentry, &lower_old_path);
@@ -83,6 +89,8 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 	struct inode *lower_dir_inode = wrapfs_lower_inode(dir);
 	struct dentry *lower_dir_dentry;
 	struct path lower_path;
+
+	pr_debug("wrapfs: unlink(%pd4)\n", dentry);
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
@@ -123,6 +131,8 @@ static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 	struct dentry *lower_parent_dentry = NULL;
 	struct path lower_path;
 
+	pr_debug("wrapfs: symlink(\"%s\", %pd4)\n", symname, dentry);
+
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
 	lower_parent_dentry = lock_parent(lower_dentry);
@@ -148,6 +158,8 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	struct dentry *lower_dentry;
 	struct dentry *lower_parent_dentry = NULL;
 	struct path lower_path;
+
+	pr_debug("wrapfs: mkdir(%pd4, 0%o)\n", dentry, mode);
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
@@ -179,6 +191,8 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 	int err;
 	struct path lower_path;
 
+	pr_debug("wrapfs: rmdir(%pd4)\n", dentry);
+
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
 	lower_dir_dentry = lock_parent(lower_dentry);
@@ -207,6 +221,8 @@ static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	struct dentry *lower_dentry;
 	struct dentry *lower_parent_dentry = NULL;
 	struct path lower_path;
+
+	pr_debug("wrapfs: mknod(%pd4, 0%o, 0%o)\n", dentry, mode, dev);
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
@@ -242,6 +258,8 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct dentry *lower_new_dir_dentry = NULL;
 	struct dentry *trap = NULL;
 	struct path lower_old_path, lower_new_path;
+
+	pr_debug("wrapfs: rename(%pd4, %pd4)\n", old_dentry, new_dentry);
 
 	wrapfs_get_lower_path(old_dentry, &lower_old_path);
 	wrapfs_get_lower_path(new_dentry, &lower_new_path);
@@ -291,6 +309,8 @@ static int wrapfs_readlink(struct dentry *dentry, char __user *buf, int bufsiz)
 	int err;
 	struct dentry *lower_dentry;
 	struct path lower_path;
+
+	pr_debug("wrapfs: readlink(%pd4)\n", dentry);
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
@@ -345,6 +365,21 @@ static int wrapfs_permission(struct inode *inode, int mask)
 	struct inode *lower_inode;
 	int err;
 
+	/* MAY_ flags are defined in include/linux/fs.h:
+	 * MAY_EXEC                0x00000001
+	 * MAY_WRITE               0x00000002
+	 * MAY_READ                0x00000004
+	 * MAY_APPEND              0x00000008
+	 * MAY_ACCESS              0x00000010
+	 * MAY_OPEN                0x00000020
+	 * MAY_CHDIR               0x00000040
+	 */
+	if ((mask & MAY_OPEN) && (mask & MAY_WRITE)) {
+		/* no path info available here -> have to wrap file open()
+		 */
+		pr_debug("wrapfs: permission_open_write(%s:%lu, 0x%x)\n", inode ? inode->i_sb->s_id : "NULL", inode ? inode->i_ino : 0, mask);
+	}
+
 	lower_inode = wrapfs_lower_inode(inode);
 	err = inode_permission(lower_inode, mask);
 	return err;
@@ -358,6 +393,10 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	struct inode *lower_inode;
 	struct path lower_path;
 	struct iattr lower_ia;
+
+	/* ATTR_ flags are defined in include/linux/fs.h
+	 */
+	pr_debug("wrapfs: setattr(%pd4, 0x%x)\n", dentry, ia->ia_valid);
 
 	inode = dentry->d_inode;
 
@@ -437,6 +476,9 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	err = vfs_getattr(&lower_path, &lower_stat);
+
+	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
+
 	if (err)
 		goto out;
 	fsstack_copy_attr_all(dentry->d_inode,
@@ -454,6 +496,8 @@ wrapfs_setxattr(struct dentry *dentry, const char *name, const void *value,
 {
 	int err; struct dentry *lower_dentry;
 	struct path lower_path;
+
+	pr_debug("setxattr(%pd4, \"%s\", \"%*pE\", %zu, 0x%x)\n", dentry, name, min((int)size, 48), value, size, flags);
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
@@ -479,6 +523,8 @@ wrapfs_getxattr(struct dentry *dentry, const char *name, void *buffer,
 	struct dentry *lower_dentry;
 	struct path lower_path;
 
+	pr_debug("wrapfs: getxattr(%pd4)\n", dentry);
+
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
 	if (!lower_dentry->d_inode->i_op->getxattr) {
@@ -502,6 +548,8 @@ wrapfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 	struct dentry *lower_dentry;
 	struct path lower_path;
 
+	pr_debug("wrapfs: listxattr(%pd4)\n", dentry);
+
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
 	if (!lower_dentry->d_inode->i_op->listxattr) {
@@ -524,6 +572,8 @@ wrapfs_removexattr(struct dentry *dentry, const char *name)
 	int err;
 	struct dentry *lower_dentry;
 	struct path lower_path;
+
+	pr_debug("wrapfs: removexattr(%pd4, \"%s\")\n", dentry, name);
 
 	wrapfs_get_lower_path(dentry, &lower_path);
 	lower_dentry = lower_path.dentry;
