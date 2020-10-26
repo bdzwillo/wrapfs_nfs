@@ -220,9 +220,6 @@ static struct dentry *__wrapfs_lookup(struct dentry *dentry,
 	struct qstr this;
 	struct dentry *ret_dentry = NULL;
 
-	/* must initialize dentry operations */
-	d_set_d_op(dentry, &wrapfs_dops);
-
 	if (IS_ROOT(dentry))
 		goto out;
 

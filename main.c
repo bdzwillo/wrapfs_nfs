@@ -65,6 +65,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	sb->s_op = &wrapfs_sops;
 
 	sb->s_export_op = &wrapfs_export_ops; /* adding NFS support */
+	sb->s_d_op = &wrapfs_dops;
 
 	/* get a new inode and allocate our root dentry */
 	inode = wrapfs_iget(sb, lower_path.dentry->d_inode);
@@ -78,8 +79,6 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 		err = -ENOMEM;
 		goto out_sput;
 	}
-	d_set_d_op(sb->s_root, &wrapfs_dops);
-
 	/* link the upper and lower dentries */
 	sb->s_root->d_fsdata = NULL;
 	err = wrapfs_new_dentry_private_data(sb->s_root);
