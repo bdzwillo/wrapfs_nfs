@@ -11,12 +11,6 @@
 
 #include "wrapfs.h"
 
-#if 1
-// is in fs/internal.h - should be in namei.h
-extern int vfs_path_lookup(struct dentry *, struct vfsmount *,
-                           const char *, unsigned int, struct path *);
-#endif
-
 /* The dentry cache is just so we have properly sized dentries */
 static struct kmem_cache *wrapfs_dentry_cachep;
 
@@ -116,27 +110,15 @@ struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 		inode->i_op = &wrapfs_main_iops;
 
 	/* use different set of file ops for directories */
-	if (S_ISDIR(lower_inode->i_mode))
+	if (S_ISDIR(lower_inode->i_mode)) {
 		inode->i_fop = &wrapfs_dir_fops;
-	else
+	} else if (special_file(lower_inode->i_mode)) {
+		init_special_inode(inode, lower_inode->i_mode, lower_inode->i_rdev);
+	} else {
 		inode->i_fop = &wrapfs_main_fops;
-
-	inode->i_mapping->a_ops = &wrapfs_aops;
-
-	inode->i_atime.tv_sec = 0;
-	inode->i_atime.tv_nsec = 0;
-	inode->i_mtime.tv_sec = 0;
-	inode->i_mtime.tv_nsec = 0;
-	inode->i_ctime.tv_sec = 0;
-	inode->i_ctime.tv_nsec = 0;
-
-	/* properly initialize special inodes */
-	if (S_ISBLK(lower_inode->i_mode) || S_ISCHR(lower_inode->i_mode) ||
-	    S_ISFIFO(lower_inode->i_mode) || S_ISSOCK(lower_inode->i_mode))
-		init_special_inode(inode, lower_inode->i_mode,
-				   lower_inode->i_rdev);
-
-	/* all well, copy inode attributes */
+		inode->i_mapping->a_ops = &wrapfs_aops;
+	}
+	/* copy inode attributes (including i_atime, i_mtime, i_ctime) */
 	fsstack_copy_attr_all(inode, lower_inode);
 	fsstack_copy_inode_size(inode, lower_inode);
 
@@ -148,22 +130,18 @@ struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
  * Helper interpose routine, called directly by ->lookup to handle
  * spliced dentries.
  */
-static struct dentry *__wrapfs_interpose(struct dentry *dentry,
+static struct inode *wrapfs_get_inode(struct dentry *dentry,
 					 struct super_block *sb,
-					 struct path *lower_path)
+					 struct inode *lower_inode)
 {
 	struct inode *inode;
-	struct inode *lower_inode;
 	struct super_block *lower_sb;
-	struct dentry *ret_dentry;
 
-	lower_inode = lower_path->dentry->d_inode;
 	lower_sb = wrapfs_lower_super(sb);
 
 	/* check that the lower file system didn't cross a mount point */
 	if (lower_inode->i_sb != lower_sb) {
-		ret_dentry = ERR_PTR(-EXDEV);
-		goto out;
+		return ERR_PTR(-EXDEV);
 	}
 
 	/*
@@ -173,15 +151,7 @@ static struct dentry *__wrapfs_interpose(struct dentry *dentry,
 
 	/* inherit lower inode number for wrapfs's inode */
 	inode = wrapfs_iget(sb, lower_inode);
-	if (IS_ERR(inode)) {
-		ret_dentry = ERR_PTR(PTR_ERR(inode));
-		goto out;
-	}
-
-	ret_dentry = d_splice_alias(inode, dentry);
-
-out:
-	return ret_dentry;
+	return inode;
 }
 
 /*
@@ -195,133 +165,83 @@ out:
 int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
 		     struct path *lower_path)
 {
-	struct dentry *ret_dentry;
+	struct inode *inode;
+	struct inode *lower_inode = lower_path->dentry->d_inode;
 
-	ret_dentry = __wrapfs_interpose(dentry, sb, lower_path);
-	return PTR_ERR(ret_dentry);
+	inode = wrapfs_get_inode(dentry, sb, lower_inode);
+	if (IS_ERR(inode)) {
+		return PTR_ERR(inode);
+	}
+	d_instantiate(dentry, inode);
+	return 0;
 }
 
 /*
- * Main driver function for wrapfs's lookup.
+ * wrapfs lookup
  *
  * Returns: NULL (ok), ERR_PTR if an error occurred.
- * Fills in lower_parent_path with <dentry,mnt> on success.
+ * Fills in positive/negative dentry->d_inode on success.
  */
-static struct dentry *__wrapfs_lookup(struct dentry *dentry,
-				      unsigned int flags,
-				      struct path *lower_parent_path)
-{
-	int err = 0;
-	struct vfsmount *lower_dir_mnt;
-	struct dentry *lower_dir_dentry = NULL;
-	struct dentry *lower_dentry;
-	const char *name;
-	struct path lower_path;
-	struct qstr this;
-	struct dentry *ret_dentry = NULL;
-
-	if (IS_ROOT(dentry))
-		goto out;
-
-	name = dentry->d_name.name;
-
-	/* now start the actual lookup procedure */
-	lower_dir_dentry = lower_parent_path->dentry;
-	lower_dir_mnt = lower_parent_path->mnt;
-
-	/* Use vfs_path_lookup to check if the dentry exists or not */
-	err = vfs_path_lookup(lower_dir_dentry, lower_dir_mnt, name, 0,
-			      &lower_path);
-
-	/* no error: handle positive dentries */
-	if (!err) {
-		wrapfs_set_lower_path(dentry, &lower_path);
-		ret_dentry =
-			__wrapfs_interpose(dentry, dentry->d_sb, &lower_path);
-		if (IS_ERR(ret_dentry)) {
-			err = PTR_ERR(ret_dentry);
-			 /* path_put underlying path on error */
-			wrapfs_put_reset_lower_path(dentry);
-		}
-		goto out;
-	}
-
-	/*
-	 * We don't consider ENOENT an error, and we want to return a
-	 * negative dentry.
-	 */
-	if (err && err != -ENOENT)
-		goto out;
-
-	/* instantiate a new negative dentry */
-	this.name = name;
-	this.len = strlen(name);
-	this.hash = full_name_hash(this.name, this.len);
-	lower_dentry = d_lookup(lower_dir_dentry, &this);
-	if (lower_dentry)
-		goto setup_lower;
-
-	lower_dentry = d_alloc(lower_dir_dentry, &this);
-	if (!lower_dentry) {
-		err = -ENOMEM;
-		goto out;
-	}
-	d_add(lower_dentry, NULL); /* instantiate and hash */
-
-setup_lower:
-	lower_path.dentry = lower_dentry;
-	lower_path.mnt = mntget(lower_dir_mnt);
-	wrapfs_set_lower_path(dentry, &lower_path);
-
-	/*
-	 * If the intent is to create a file, then don't return an error, so
-	 * the VFS will continue the process of making this negative dentry
-	 * into a positive one.
-	 */
-	if (err == -ENOENT || (flags & (LOOKUP_CREATE|LOOKUP_RENAME_TARGET)))
-		err = 0;
-
-out:
-	if (err)
-		return ERR_PTR(err);
-	return ret_dentry;
-}
-
 struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 			     unsigned int flags)
 {
 	int err;
-	struct dentry *ret, *parent;
-	struct path lower_parent_path;
+	struct dentry *ret_dentry = NULL;
+	struct dentry *lower_dir_dentry;
+	struct vfsmount *lower_dir_mnt;
+	struct dentry *lower_dentry;
+	struct inode *inode;
+	struct inode *lower_inode;
+	struct path lower_path;
 
-	parent = dget_parent(dentry);
+	lower_dir_dentry = wrapfs_get_lower_dentry(dentry->d_parent);
+	lower_dir_mnt	 = wrapfs_get_lower_path_nolock(dentry->d_parent)->mnt;
+
+	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
+ 	lower_dentry = lookup_one_len(dentry->d_name.name, lower_dir_dentry, dentry->d_name.len);
+ 	mutex_unlock(&lower_dir_dentry->d_inode->i_mutex);
+	if (IS_ERR(lower_dentry)) {
+		pr_debug("wrapfs: lookup(%pd4, 0x%x) -> err %d\n", dentry, flags, (int)PTR_ERR(lower_dentry));
+		ret_dentry = lower_dentry;
+		goto out;
+	}
 
 	/* LOOKUP_ flags are defined in include/linux/namei_lookup.h
 	 */
-	pr_debug("wrapfs: lookup(%pd4, 0x%x)\n", dentry, flags);
+	pr_debug("wrapfs: lookup(%pd4, 0x%x) inode %s:%lu\n", dentry, flags, lower_dentry->d_inode ? lower_dentry->d_inode->i_sb->s_id : "NULL", lower_dentry->d_inode ? lower_dentry->d_inode->i_ino : 0);
 
-	wrapfs_get_lower_path(parent, &lower_parent_path);
-
+	/* dentry->d_op ops are inherited from sb->s_d_op in d_alloc() */
 	/* allocate dentry private data.  We free it in ->d_release */
 	err = wrapfs_new_dentry_private_data(dentry);
 	if (err) {
-		ret = ERR_PTR(err);
+		ret_dentry = ERR_PTR(err);
+		dput(lower_dentry);
 		goto out;
 	}
-	ret = __wrapfs_lookup(dentry, flags, &lower_parent_path);
-	if (IS_ERR(ret))
-		goto out;
-	if (ret)
-		dentry = ret;
-	if (dentry->d_inode)
-		fsstack_copy_attr_times(dentry->d_inode,
-					wrapfs_lower_inode(dentry->d_inode));
-	/* update parent directory's atime */
-	fsstack_copy_attr_atime(parent->d_inode,
-				wrapfs_lower_inode(parent->d_inode));
+	lower_path.dentry = lower_dentry;
+	lower_path.mnt = mntget(lower_dir_mnt);
+	wrapfs_set_lower_path(dentry, &lower_path);
 
+	lower_inode = lower_dentry->d_inode;
+	if (!lower_inode) {
+		ret_dentry = NULL;
+		d_add(dentry, NULL); /* add negative dentry */
+		goto out;
+	}
+	inode = wrapfs_get_inode(dentry, dentry->d_sb, lower_inode);
+	if (IS_ERR(inode)) {
+		ret_dentry = ERR_PTR(PTR_ERR(inode));
+		/* path_put underlying path on error */
+		wrapfs_put_reset_lower_path(dentry);
+		goto out;
+	}
+	d_add(dentry, inode); /* add positive dentry */
+
+	/* update parent directory's atime */
+	fsstack_copy_attr_atime(dentry->d_parent->d_inode, wrapfs_lower_inode(dentry->d_parent->d_inode));
 out:
-	wrapfs_put_lower_path(parent, &lower_parent_path);
-	dput(parent);
-	return ret;
+	/* if a real dentry is returned here, dput() will be called on it.
+	 * if NULL is returned positive/negative dentry from params will be used without dput().
+	 */
+	return ret_dentry;
 }

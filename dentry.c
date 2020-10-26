@@ -40,8 +40,12 @@ out:
 static void wrapfs_d_release(struct dentry *dentry)
 {
 	/* release and reset the lower paths */
-	wrapfs_put_reset_lower_path(dentry);
-	wrapfs_free_dentry_private_data(dentry);
+	if (WRAPFS_D(dentry)) {
+		if (wrapfs_get_lower_dentry(dentry)) {
+			wrapfs_put_reset_lower_path(dentry);
+		}
+		wrapfs_free_dentry_private_data(dentry);
+	}
 	return;
 }
 

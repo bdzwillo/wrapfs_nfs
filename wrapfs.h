@@ -197,6 +197,17 @@ static inline void wrapfs_put_reset_lower_path(const struct dentry *dent)
 	return;
 }
 
+static inline struct path *wrapfs_get_lower_path_nolock(const struct dentry *dentry)
+{
+	return &WRAPFS_D(dentry)->lower_path;
+}
+
+static inline struct dentry *wrapfs_get_lower_dentry(const struct dentry *dentry)
+{
+	struct dentry *lower_dentry = WRAPFS_D(dentry)->lower_path.dentry;
+	return lower_dentry;
+}
+
 /* locking helpers */
 static inline struct dentry *lock_parent(struct dentry *dentry)
 {
