@@ -74,8 +74,9 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	}
 	sb->s_root = d_make_root(inode);
 	if (!sb->s_root) {
+		// d_make_root() calls iput(inode) on error
 		err = -ENOMEM;
-		goto out_iput;
+		goto out_sput;
 	}
 	d_set_d_op(sb->s_root, &wrapfs_dops);
 
@@ -105,8 +106,6 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	/* no longer needed: free_dentry_private_data(sb->s_root); */
 out_freeroot:
 	dput(sb->s_root);
-out_iput:
-	iput(inode);
 out_sput:
 	/* drop refs we took earlier */
 	atomic_dec(&lower_sb->s_active);
