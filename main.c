@@ -82,7 +82,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 
 	/* link the upper and lower dentries */
 	sb->s_root->d_fsdata = NULL;
-	err = new_dentry_private_data(sb->s_root);
+	err = wrapfs_new_dentry_private_data(sb->s_root);
 	if (err)
 		goto out_freeroot;
 
@@ -103,7 +103,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 		       dev_name, lower_sb->s_type->name);
 	goto out; /* all is well */
 
-	/* no longer needed: free_dentry_private_data(sb->s_root); */
+	/* no longer needed: wrapfs_free_dentry_private_data(sb->s_root); */
 out_freeroot:
 	dput(sb->s_root);
 out_sput:

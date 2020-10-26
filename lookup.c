@@ -36,7 +36,7 @@ void wrapfs_destroy_dentry_cache(void)
 		kmem_cache_destroy(wrapfs_dentry_cachep);
 }
 
-void free_dentry_private_data(struct dentry *dentry)
+void wrapfs_free_dentry_private_data(struct dentry *dentry)
 {
 	if (!dentry || !dentry->d_fsdata)
 		return;
@@ -45,7 +45,7 @@ void free_dentry_private_data(struct dentry *dentry)
 }
 
 /* allocate new dentry private data */
-int new_dentry_private_data(struct dentry *dentry)
+int wrapfs_new_dentry_private_data(struct dentry *dentry)
 {
 	struct wrapfs_dentry_info *info = WRAPFS_D(dentry);
 
@@ -306,7 +306,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	wrapfs_get_lower_path(parent, &lower_parent_path);
 
 	/* allocate dentry private data.  We free it in ->d_release */
-	err = new_dentry_private_data(dentry);
+	err = wrapfs_new_dentry_private_data(dentry);
 	if (err) {
 		ret = ERR_PTR(err);
 		goto out;
