@@ -188,8 +188,11 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 		goto out_err;
 	}
 
-	/* open lower object and link wrapfs's file struct to lower's */
-	wrapfs_get_lower_path(file->f_path.dentry, &lower_path);
+	/* open lower object and link wrapfs's file struct to lower's
+	 * (hold a lower_path reference to protect against concurrent ops like unlink)
+	 */
+	pathcpy(&lower_path, &WRAPFS_D(file->f_path.dentry)->lower_path);
+	path_get(&lower_path);
 	lower_file = dentry_open(&lower_path, file->f_flags, current_cred());
 	path_put(&lower_path);
 	if (IS_ERR(lower_file)) {
@@ -246,16 +249,12 @@ static int wrapfs_fsync(struct file *file, loff_t start, loff_t end,
 {
 	int err;
 	struct file *lower_file;
-	struct path lower_path;
-	struct dentry *dentry = file->f_path.dentry;
 
 	err = generic_file_fsync(file, start, end, datasync);
 	if (err)
 		goto out;
 	lower_file = wrapfs_lower_file(file);
-	wrapfs_get_lower_path(dentry, &lower_path);
 	err = vfs_fsync_range(lower_file, start, end, datasync);
-	wrapfs_put_lower_path(dentry, &lower_path);
 out:
 	return err;
 }

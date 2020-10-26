@@ -66,7 +66,7 @@ extern struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 extern struct inode *wrapfs_iget(struct super_block *sb,
 				 struct inode *lower_inode);
 extern int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
-			    struct path *lower_path);
+			    struct dentry *lower_dentry);
 
 /* file private data */
 struct wrapfs_file_info {
@@ -153,22 +153,7 @@ static inline void pathcpy(struct path *dst, const struct path *src)
 	dst->dentry = src->dentry;
 	dst->mnt = src->mnt;
 }
-/* Returns struct path.  Caller must path_put it. */
-static inline void wrapfs_get_lower_path(const struct dentry *dent,
-					 struct path *lower_path)
-{
-	spin_lock(&WRAPFS_D(dent)->lock);
-	pathcpy(lower_path, &WRAPFS_D(dent)->lower_path);
-	path_get(lower_path);
-	spin_unlock(&WRAPFS_D(dent)->lock);
-	return;
-}
-static inline void wrapfs_put_lower_path(const struct dentry *dent,
-					 struct path *lower_path)
-{
-	path_put(lower_path);
-	return;
-}
+
 static inline void wrapfs_set_lower_path(const struct dentry *dent,
 					 struct path *lower_path)
 {
@@ -177,14 +162,7 @@ static inline void wrapfs_set_lower_path(const struct dentry *dent,
 	spin_unlock(&WRAPFS_D(dent)->lock);
 	return;
 }
-static inline void wrapfs_reset_lower_path(const struct dentry *dent)
-{
-	spin_lock(&WRAPFS_D(dent)->lock);
-	WRAPFS_D(dent)->lower_path.dentry = NULL;
-	WRAPFS_D(dent)->lower_path.mnt = NULL;
-	spin_unlock(&WRAPFS_D(dent)->lock);
-	return;
-}
+
 static inline void wrapfs_put_reset_lower_path(const struct dentry *dent)
 {
 	struct path lower_path;
@@ -197,7 +175,7 @@ static inline void wrapfs_put_reset_lower_path(const struct dentry *dent)
 	return;
 }
 
-static inline struct path *wrapfs_get_lower_path_nolock(const struct dentry *dentry)
+static inline struct path *wrapfs_get_lower_path(const struct dentry *dentry)
 {
 	return &WRAPFS_D(dentry)->lower_path;
 }

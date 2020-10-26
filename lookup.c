@@ -163,10 +163,10 @@ static struct inode *wrapfs_get_inode(struct dentry *dentry,
  * @lower_path: the lower path (caller does path_get/put)
  */
 int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
-		     struct path *lower_path)
+		     struct dentry *lower_dentry)
 {
 	struct inode *inode;
-	struct inode *lower_inode = lower_path->dentry->d_inode;
+	struct inode *lower_inode = lower_dentry->d_inode;
 
 	inode = wrapfs_get_inode(dentry, sb, lower_inode);
 	if (IS_ERR(inode)) {
@@ -195,7 +195,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	struct path lower_path;
 
 	lower_dir_dentry = wrapfs_get_lower_dentry(dentry->d_parent);
-	lower_dir_mnt	 = wrapfs_get_lower_path_nolock(dentry->d_parent)->mnt;
+	lower_dir_mnt	 = wrapfs_get_lower_path(dentry->d_parent)->mnt;
 
 	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
  	lower_dentry = lookup_one_len(dentry->d_name.name, lower_dir_dentry, dentry->d_name.len);

@@ -39,11 +39,8 @@ static void wrapfs_put_super(struct super_block *sb)
 static int wrapfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 {
 	int err;
-	struct path lower_path;
 
-	wrapfs_get_lower_path(dentry, &lower_path);
-	err = vfs_statfs(&lower_path, buf);
-	wrapfs_put_lower_path(dentry, &lower_path);
+	err = vfs_statfs(wrapfs_get_lower_path(dentry), buf);
 
 	/* set return buf to our f/s to avoid confusing user-level utils */
 	buf->f_type = WRAPFS_SUPER_MAGIC;
