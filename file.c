@@ -158,7 +158,16 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 		err = -ENOMEM;
 		goto out_err;
 	}
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if (file->f_mode & FMODE_WRITE) {
+		/* TODO: might try to check if "create" was already logged for this case
+		 */
+		if ((err = wrapfs_check_write(file->f_path.dentry, inode->i_sb, "open"))) {
+			kfree(WRAPFS_F(file));
+			return err;
+		}
+	}
+#endif
 	/* open lower object and link wrapfs's file struct to lower's
 	 * (hold a lower_path reference to protect against concurrent ops like unlink)
 	 */

@@ -67,6 +67,10 @@ extern struct inode *wrapfs_iget(struct super_block *sb,
 extern int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
 			    struct dentry *lower_dentry);
 
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+extern int wrapfs_check_write(struct dentry *dentry, struct super_block *sb, const char *op);
+#endif
+
 /* file private data */
 struct wrapfs_file_info {
 	struct file *lower_file;

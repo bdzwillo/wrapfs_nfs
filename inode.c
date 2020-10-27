@@ -11,6 +11,20 @@
 
 #include "wrapfs.h"
 
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+int wrapfs_check_write(struct dentry *dentry, struct super_block *sb, const char *op)
+{
+	if (!WRAPFS_SB(sb)->rdonly) {
+		return 0;
+	}
+	if (WRAPFS_SB(sb)->single_uid && (WRAPFS_SB(sb)->single_uid != current_uid().val)) {
+		return 0;
+	}
+	pr_debug("wrapfs: deny(%s) %pd4\n", op, dentry);
+	return -EACCES;
+}
+#endif
+
 static int wrapfs_create(struct inode *dir, struct dentry *dentry,
 			 umode_t mode, bool want_excl)
 {
@@ -21,7 +35,11 @@ static int wrapfs_create(struct inode *dir, struct dentry *dentry,
 	/* S_ modes are defined in include/fcntl.h
 	 */
 	pr_debug("wrapfs: create(%pd4, 0%o)\n", dentry, mode);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(dentry, dir->i_sb, "create"))) {
+		return err;
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
@@ -49,7 +67,11 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 	int err;
 
 	pr_debug("wrapfs: link(%pd4, %pd4)\n", old_dentry, new_dentry);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(new_dentry, dir->i_sb, "link"))) {
+		return err;
+	}
+#endif
 	file_size_save = i_size_read(old_dentry->d_inode);
 	lower_old_dentry = wrapfs_get_lower_dentry(old_dentry);
 	lower_new_dentry = wrapfs_get_lower_dentry(new_dentry);
@@ -85,7 +107,11 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 	struct dentry *lower_dir_dentry;
 
 	pr_debug("wrapfs: unlink(%pd4)\n", dentry);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(dentry, dir->i_sb, "unlink"))) {
+		return err;
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	dget(lower_dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
@@ -122,7 +148,11 @@ static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 	struct dentry *lower_parent_dentry = NULL;
 
 	pr_debug("wrapfs: symlink(\"%s\", %pd4)\n", symname, dentry);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(dentry, dir->i_sb, "symlink"))) {
+		return err;
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	dget(lower_dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
@@ -150,7 +180,11 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	struct dentry *lower_parent_dentry = NULL;
 
 	pr_debug("wrapfs: mkdir(%pd4, 0%o)\n", dentry, mode);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(dentry, dir->i_sb, "mkdir"))) {
+		return err;
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
@@ -181,7 +215,11 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 	int err;
 
 	pr_debug("wrapfs: rmdir(%pd4)\n", dentry);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(dentry, dir->i_sb, "rmdir"))) {
+		return err;
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	dget(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
@@ -214,7 +252,11 @@ static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	struct dentry *lower_parent_dentry = NULL;
 
 	pr_debug("wrapfs: mknod(%pd4, 0%o, 0%o)\n", dentry, mode, dev);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(dentry, dir->i_sb, "mknod"))) {
+		return err;
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
@@ -249,7 +291,14 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct dentry *trap = NULL;
 
 	pr_debug("wrapfs: rename(%pd4, %pd4)\n", old_dentry, new_dentry);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if ((err = wrapfs_check_write(old_dentry, old_dir->i_sb, "rename-from"))) {
+		return err;
+	}
+	if ((err = wrapfs_check_write(new_dentry, new_dir->i_sb, "rename-to"))) {
+		return err;
+	}
+#endif
 	lower_old_dentry = wrapfs_get_lower_dentry(old_dentry);
 	lower_new_dentry = wrapfs_get_lower_dentry(new_dentry);
 	dget(lower_old_dentry);
@@ -379,7 +428,13 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	/* ATTR_ flags are defined in include/linux/fs.h
 	 */
 	pr_debug("wrapfs: setattr(%pd4, 0x%x)\n", dentry, ia->ia_valid);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if (WRAPFS_SB(dentry->d_sb)) {
+		if ((err = wrapfs_check_write(dentry, dentry->d_sb, "setattr"))) {
+			return err;
+		}
+	}
+#endif
 	inode = dentry->d_inode;
 
 	/*
@@ -486,7 +541,13 @@ wrapfs_setxattr(struct dentry *dentry, const char *name, const void *value,
 	int err; struct dentry *lower_dentry;
 
 	pr_debug("setxattr(%pd4, \"%s\", \"%*pE\", %zu, 0x%x)\n", dentry, name, min((int)size, 48), value, size, flags);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if (WRAPFS_SB(dentry->d_sb)) {
+		if ((err = wrapfs_check_write(dentry, dentry->d_sb, "setxattr"))) {
+			return err;
+		}
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	if (!lower_dentry->d_inode->i_op->setxattr) {
 		err = -EOPNOTSUPP;
@@ -554,7 +615,13 @@ wrapfs_removexattr(struct dentry *dentry, const char *name)
 	struct dentry *lower_dentry;
 
 	pr_debug("wrapfs: removexattr(%pd4, \"%s\")\n", dentry, name);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	if (WRAPFS_SB(dentry->d_sb)) {
+		if ((err = wrapfs_check_write(dentry, dentry->d_sb, "removexattr"))) {
+			return err;
+		}
+	}
+#endif
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	if (!lower_dentry->d_inode->i_op->removexattr) {
 		err = -EOPNOTSUPP;
