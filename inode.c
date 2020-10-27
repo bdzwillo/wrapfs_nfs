@@ -466,7 +466,14 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	if (err)
 		goto out;
 	fsstack_copy_attr_all(dentry->d_inode, wrapfs_lower_inode(dentry->d_inode));
-	stat->blocks = wrapfs_lower_inode(dentry->d_inode)->i_blocks;
+	if (lower_dentry->d_flags & DCACHE_OP_REVALIDATE) {
+		/* on top of nfs or other remote filesystem i_size/i_blocks
+		 * might have changed after the last revalidate.
+		 */
+		fsstack_copy_inode_size(dentry->d_inode, wrapfs_lower_inode(dentry->d_inode));
+	} else {
+		stat->blocks = wrapfs_lower_inode(dentry->d_inode)->i_blocks;
+	}
 	generic_fillattr(dentry->d_inode, stat);
 out:
 	return err;
