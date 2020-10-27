@@ -65,6 +65,9 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	sb->s_op = &wrapfs_sops;
 
 	sb->s_export_op = &wrapfs_export_ops; /* adding NFS support */
+	if (lower_sb->s_flags & MS_NOREMOTELOCK) {
+		sb->s_flags |= MS_NOREMOTELOCK; /* set this to use local file locks instead of nfs locks */
+	}
 	sb->s_d_op = &wrapfs_dops;
 
 	/* get a new inode and allocate our root dentry */

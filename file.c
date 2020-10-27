@@ -299,6 +299,61 @@ out:
 	return err;
 }
 
+#if defined(WRAP_REMOTE_FILE_LOCKS)
+static inline bool is_remote_lock(struct file *filp)
+{
+        return likely(!(filp->f_path.dentry->d_sb->s_flags & MS_NOREMOTELOCK));
+}
+
+static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
+{
+	int err;
+	struct file *lower_file;
+
+	/* F_*LK cmds are defined in fcntl.h (F_GETLK=5, F_SETLK=6, F_SETLKW=7)
+ 	 * F_*LCK types are defined in fcntl.h (F_RDLCK=0, F_WRLCK=1, F_UNLCK=2)
+	 * FL_* flags are defined in linux/fs.h (FL_POSIX=1, FL_FLOCK=2, FL_SLEEP=128, ..)
+	 */
+	pr_debug("wrapfs: lock(%pD4, %d, t=0x%x, fl=0x%x, r=%lld:%lld)\n", filp, cmd, fl->fl_type, fl->fl_flags, (long long)fl->fl_start, (long long)fl->fl_end);
+
+	lower_file = wrapfs_lower_file(filp);
+	get_file(lower_file); /* prevent lower_file from being released */
+	fl->fl_file = lower_file;
+	if (lower_file->f_op && lower_file->f_op->lock && is_remote_lock(lower_file)) {
+		err = lower_file->f_op->lock(lower_file, cmd, fl);
+	} else {
+		err = posix_lock_file(lower_file, fl, NULL);
+	}
+	fl->fl_file = filp;
+	fput(lower_file);
+	return err;
+}
+
+static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
+{
+	int err;
+	struct file *lower_file;
+
+	/* F_*LK cmds are defined in fctnl.h ((flock_cmd & LOCK_NB) ? F_SETLK=6 : F_SETLKW=7)
+ 	 * F_*LCK types are defined in fcntl.h (F_RDLCK=0 (flock_cmd:LOCK_SH), F_WRLCK=1 (flock_cmd:LOCK_EX), F_UNLCK=2 (flock_cmd:LOCK_UN))
+	 * FL_* flags are defined in linux/fs.h (FL_POSIX=1, FL_FLOCK=2, FL_SLEEP=128, ..)
+	 */
+	pr_debug("wrapfs: flock(%pD4, %d, t=0x%x, fl=0x%x)\n", filp, cmd, fl->fl_type, fl->fl_flags);
+
+	lower_file = wrapfs_lower_file(filp);
+	get_file(lower_file); /* prevent lower_file from being released */
+	fl->fl_file = lower_file;
+	if (lower_file->f_op && lower_file->f_op->flock && is_remote_lock(lower_file)) {
+		err = lower_file->f_op->flock(lower_file, cmd, fl);
+	} else {
+		err = locks_lock_file_wait(lower_file, fl);
+	}
+	fl->fl_file = filp;
+	fput(lower_file);
+	return err;
+}
+#endif
+
 /*
  * For directories wrapfs cannot use generic_file_llseek as ->llseek,
  * because it would only set the offset of the upper file. It is also
@@ -341,9 +396,20 @@ const struct file_operations wrapfs_main_fops = {
 	.fasync		= wrapfs_fasync,
 	.aio_read	= wrapfs_aio_read,
 	.aio_write	= wrapfs_aio_write,
+#if defined(WRAP_REMOTE_FILE_LOCKS)
+	.lock		= wrapfs_lock,
+	.flock		= wrapfs_flock,
+#endif
 };
 
-/* trimmed directory options */
+/* trimmed directory options 
+ *
+ * note: for an underlying nfs it is required to map the directory file ops,
+ *       because nfs_opendir(inode, file) uses the inode spinlock to protect
+ *       a list_add() operation, and nfs_closedir(inode, file) uses the
+ *       file->f_path.dentry->d_inode spinlock to protect the list_del().
+ *       (when the directory ops are not mapped, these are not the same objects)
+ */
 const struct file_operations wrapfs_dir_fops = {
 	.llseek		= wrapfs_file_llseek,
 	.read		= generic_read_dir,
