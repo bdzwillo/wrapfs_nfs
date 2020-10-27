@@ -111,59 +111,30 @@ out:
 static int wrapfs_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	int err = 0;
-	bool willwrite;
 	struct file *lower_file;
-	const struct vm_operations_struct *saved_vm_ops = NULL;
 
 	pr_debug("wrapfs: mmap(%pD4, 0x%lx)\n", file, vma->vm_flags);
 
-	/* this might be deferred to mmap's writepage */
-	willwrite = ((vma->vm_flags | VM_SHARED | VM_WRITE) == vma->vm_flags);
-
-	/*
-	 * File systems which do not implement ->writepage may use
-	 * generic_file_readonly_mmap as their ->mmap op.  If you call
-	 * generic_file_readonly_mmap with VM_WRITE, you'd get an -EINVAL.
-	 * But we cannot call the lower ->mmap op, so we can't tell that
-	 * writeable mappings won't work.  Therefore, our only choice is to
-	 * check if the lower file system supports the ->writepage, and if
-	 * not, return EINVAL (the same error that
-	 * generic_file_readonly_mmap returns in that case).
-	 */
 	lower_file = wrapfs_lower_file(file);
-	if (willwrite && !lower_file->f_mapping->a_ops->writepage) {
-		err = -EINVAL;
-		printk(KERN_ERR "wrapfs: lower file system does not "
-		       "support writeable mmap\n");
-		goto out;
-	}
 
-	/*
-	 * find and save lower vm_ops.
-	 *
-	 * XXX: the VFS should have a cleaner way of finding the lower vm_ops
-	 */
-	if (!WRAPFS_F(file)->lower_vm_ops) {
-		err = lower_file->f_op->mmap(lower_file, vma);
-		if (err) {
-			printk(KERN_ERR "wrapfs: lower mmap failed %d\n", err);
-			goto out;
-		}
-		saved_vm_ops = vma->vm_ops; /* save: came from lower ->mmap */
-	}
+	if (!lower_file->f_op->mmap)
+		return -ENODEV;
 
-	/*
-	 * Next 3 lines are all I need from generic_file_mmap.  I definitely
-	 * don't want its test for ->readpage which returns -ENOEXEC.
-	 */
+	if (WARN_ON(file != vma->vm_file))
+ 		return -EIO;
+
+	vma->vm_file = get_file(lower_file);
+
+	err = lower_file->f_op->mmap(lower_file, vma);
+	if (err) {
+		/* Drop reference count from new vm_file value */
+		fput(lower_file);
+	} else {
+		/* Drop reference count from previous vm_file value */
+		fput(file);
+	}
 	file_accessed(file);
-	vma->vm_ops = &wrapfs_vm_ops;
 
-	file->f_mapping->a_ops = &wrapfs_aops; /* set our aops */
-	if (!WRAPFS_F(file)->lower_vm_ops) /* save for our ->fault */
-		WRAPFS_F(file)->lower_vm_ops = saved_vm_ops;
-
-out:
 	return err;
 }
 

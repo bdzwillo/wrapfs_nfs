@@ -52,7 +52,6 @@ extern const struct inode_operations wrapfs_symlink_iops;
 extern const struct super_operations wrapfs_sops;
 extern const struct dentry_operations wrapfs_dops;
 extern const struct address_space_operations wrapfs_aops, wrapfs_dummy_aops;
-extern const struct vm_operations_struct wrapfs_vm_ops;
 extern const struct export_operations wrapfs_export_ops;
 
 extern int wrapfs_init_inode_cache(void);
