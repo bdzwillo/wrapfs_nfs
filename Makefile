@@ -9,7 +9,7 @@ endif
 
 EXTRA_CFLAGS += -DWRAPFS_VERSION=\"$(WRAPFS_VERSION)\"
 #ccflags-y := -DDEBUG
-ccflags-y := -DWRAP_REMOTE_FILE_LOCKS
+ccflags-y := -DWRAP_REMOTE_FILE_LOCKS -DWRAPFS_INTERCEPT_INODE_MODIFY
 
 obj-m += wrapfs.o
 wrapfs-y := dentry.o file.o inode.o main.o super.o lookup.o mmap.o

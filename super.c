@@ -152,13 +152,40 @@ static void wrapfs_umount_begin(struct super_block *sb)
 		lower_sb->s_op->umount_begin(lower_sb);
 }
 
+#if defined (WRAPFS_INTERCEPT_INODE_MODIFY)
+/* Prints the mount options for a given superblock.
+ * Returns zero; does not fail.
+ */
+static int wrapfs_show_options(struct seq_file *m, struct dentry *dentry)
+{
+	struct super_block *sb = dentry->d_sb;
+	struct wrapfs_sb_info *spd;
+
+	spd = WRAPFS_SB(sb);
+	if (!spd)
+		return 0;
+
+	if (spd->rdonly) {
+		seq_puts(m, ",block");
+	}
+	if (spd->single_uid) {
+		seq_printf(m, ",uid=%u", spd->single_uid);
+	}
+	return 0;
+}
+#endif
+
 const struct super_operations wrapfs_sops = {
 	.put_super	= wrapfs_put_super,
 	.statfs		= wrapfs_statfs,
 	.remount_fs	= wrapfs_remount_fs,
 	.evict_inode	= wrapfs_evict_inode,
 	.umount_begin	= wrapfs_umount_begin,
+#if defined (WRAPFS_INTERCEPT_INODE_MODIFY)
+	.show_options	= wrapfs_show_options,
+#else
 	.show_options	= generic_show_options,
+#endif
 	.alloc_inode	= wrapfs_alloc_inode,
 	.destroy_inode	= wrapfs_destroy_inode,
 	.drop_inode	= generic_delete_inode,

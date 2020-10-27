@@ -11,6 +11,52 @@
 
 #include "wrapfs.h"
 #include <linux/module.h>
+#include <linux/parser.h>
+
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+struct wrapfs_mountopt {
+	bool block;
+	int uid;
+	const char *lower_path_name;
+};
+
+enum { Opt_block, Opt_uid, Opt_err };
+
+static match_table_t tokens = {
+	{Opt_block, "block"},
+	{Opt_uid, "uid=%u"},
+	{Opt_err, NULL}
+};
+
+static int parse_options(char *options, struct wrapfs_mountopt *opts)
+{
+	char *p;
+	substring_t args[MAX_OPT_ARGS];
+
+	/* defaults */
+	memset(opts, 0, sizeof(*opts));
+
+	while ((p = strsep(&options, ",")) != NULL) {
+		int token;
+
+		if (!*p)
+			continue;
+
+		token = match_token(p, tokens, args);
+		switch (token) {
+		case Opt_block:
+			opts->block = true;
+			break;
+		case Opt_uid:
+			if (match_int(&args[0], &opts->uid)) {
+				return -EINVAL;
+			}
+			break;
+		}
+	}
+	return 0;
+}
+#endif
 
 /*
  * There is no need to lock the wrapfs_super_info's rwsem as there is no
@@ -21,7 +67,12 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	int err = 0;
 	struct super_block *lower_sb;
 	struct path lower_path;
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY) 
+	struct wrapfs_mountopt *opts = raw_data;
+	char *dev_name = (char *)opts->lower_path_name;
+#else
 	char *dev_name = (char *) raw_data;
+#endif
 	struct inode *inode;
 
 	if (!dev_name) {
@@ -52,7 +103,10 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	lower_sb = lower_path.dentry->d_sb;
 	atomic_inc(&lower_sb->s_active);
 	wrapfs_set_lower_super(sb, lower_sb);
-
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY) 
+	WRAPFS_SB(sb)->rdonly = opts->block;
+	WRAPFS_SB(sb)->single_uid = opts->uid;
+#endif
 	/* inherit maxbytes from lower file system */
 	sb->s_maxbytes = lower_sb->s_maxbytes;
 
@@ -123,10 +177,23 @@ out:
 struct dentry *wrapfs_mount(struct file_system_type *fs_type, int flags,
 			    const char *dev_name, void *raw_data)
 {
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+        int ret;
+	struct wrapfs_mountopt opts;
+
+	ret = parse_options(raw_data, &opts);
+        if (ret)
+                return ERR_PTR(ret);
+
+        opts.lower_path_name = dev_name;
+
+	return mount_nodev(fs_type, flags, &opts, wrapfs_read_super);
+#else
 	void *lower_path_name = (void *) dev_name;
 
 	return mount_nodev(fs_type, flags, lower_path_name,
-			   wrapfs_read_super);
+		wrapfs_read_super);
+#endif
 }
 
 static void wrapfs_kill_super_block(struct super_block *sb)

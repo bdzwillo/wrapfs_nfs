@@ -88,6 +88,10 @@ struct wrapfs_dentry_info {
 /* wrapfs super-block data in memory */
 struct wrapfs_sb_info {
 	struct super_block *lower_sb;
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
+	int rdonly;
+	uid_t single_uid;
+#endif
 };
 
 /*
