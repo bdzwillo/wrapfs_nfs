@@ -1,4 +1,4 @@
-WRAPFS_VERSION="0.1"
+WRAPFS_VERSION="0.2"
 
 ARCH=$(shell uname -m)
 
