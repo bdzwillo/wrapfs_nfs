@@ -129,11 +129,16 @@ struct dentry *wrapfs_mount(struct file_system_type *fs_type, int flags,
 			   wrapfs_read_super);
 }
 
+static void wrapfs_kill_super_block(struct super_block *sb)
+{
+	kill_anon_super(sb); // calls generic_shutdown_super()->re_put_super() where s_fs_info is freed
+}
+
 static struct file_system_type wrapfs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= WRAPFS_NAME,
 	.mount		= wrapfs_mount,
-	.kill_sb	= generic_shutdown_super,
+	.kill_sb	= wrapfs_kill_super_block,
 	.fs_flags	= 0,
 };
 MODULE_ALIAS_FS(WRAPFS_NAME);
