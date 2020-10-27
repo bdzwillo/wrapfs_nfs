@@ -300,24 +300,28 @@ out:
 }
 
 /*
- * Wrapfs cannot use generic_file_llseek as ->llseek, because it would
- * only set the offset of the upper file.  So we have to implement our
- * own method to set both the upper and lower file offsets
- * consistently.
+ * For directories wrapfs cannot use generic_file_llseek as ->llseek,
+ * because it would only set the offset of the upper file. It is also
+ * necessary to call the llseek operation of the lower filesystem,
+ * because filesystems like nfs implement a differing logic from
+ * generic_file_llseek.
+ *
+ * For regular files generic_file_llseek is sufficient, because all
+ * the read()/write() calls are called with a file->f_pos parameter
+ * from the vfs-layer.
  */
 static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 {
 	int err;
 	struct file *lower_file;
 
-	err = generic_file_llseek(file, offset, whence);
-	if (err < 0)
-		goto out;
-
 	lower_file = wrapfs_lower_file(file);
-	err = generic_file_llseek(lower_file, offset, whence);
 
-out:
+	mutex_lock(&file->f_path.dentry->d_inode->i_mutex);
+	err = vfs_llseek(lower_file, offset, whence);
+	file->f_pos = lower_file->f_pos;
+	mutex_unlock(&file->f_path.dentry->d_inode->i_mutex);
+
 	return err;
 }
 
