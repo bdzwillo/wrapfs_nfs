@@ -28,3 +28,15 @@ Enable output for all pr_debug() calls:
 
 ```# echo "file */wrapfs/* +p" > /sys/kernel/debug/dynamic_debug/control```
 
+Intercept Example
+-----------------
+The branch **intercept_modify** includes example code which shows how to intercept all inode
+write operations (in our project this is used to implement path based security rules).
+
+- the interception code is enabled via -DWRAPFS_INTERCEPT_INODE_MODIFY
+
+The example code can be used to deny write access for a single uid. The usage is like follows:
+```
+# insmod wrapfs.ko
+# mount -t wrapfs -o block,uid=12345 /mnt/test /mnt/test
+```
