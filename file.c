@@ -163,9 +163,7 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 	 * (hold a lower_path reference to protect against concurrent ops like unlink)
 	 */
 	pathcpy(&lower_path, &WRAPFS_D(file->f_path.dentry)->lower_path);
-	path_get(&lower_path);
 	lower_file = dentry_open(&lower_path, file->f_flags, current_cred());
-	path_put(&lower_path);
 	if (IS_ERR(lower_file)) {
 		err = PTR_ERR(lower_file);
 		lower_file = wrapfs_lower_file(file);
