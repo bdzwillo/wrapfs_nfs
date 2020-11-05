@@ -222,7 +222,13 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	lower_path.mnt = mntget(lower_dir_mnt);
 	wrapfs_set_lower_path(dentry, &lower_path);
 
-	lower_inode = lower_dentry->d_inode;
+	/*
+	 * negative dentry can go positive under us here - its parent is not
+	 * locked.  That's OK and that could happen just as we return from
+	 * lookup() anyway.  Just need to be careful and fetch
+	 * ->d_inode only once - it's not stable here.
+	 */
+	lower_inode = READ_ONCE(lower_dentry->d_inode);
 	if (!lower_inode) {
 		ret_dentry = NULL;
 		d_add(dentry, NULL); /* add negative dentry */
@@ -235,10 +241,23 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 		wrapfs_put_reset_lower_path(dentry);
 		goto out;
 	}
+	/* update parent directory's atime
+	 *
+	 * note: there's nothing to prevent losing a timeslice to preemtion in
+ 	 *       the middle of evaluation of lower_dentry->d_parent->d_inode,
+	 *       having another process move lower_dentry around and have its
+	 *       (ex)parent not pinned anymore and freed on memory pressure. 
+	 *       Then we regain CPU and try to fetch ->d_inode from memory
+	 *       that is freed by that point.
+	 *
+	 *       dentry->d_parent *is* stable here - it's an argument of ->lookup() and
+	 *       we are guaranteed that it won't be moved anywhere until we feed it
+	 *       to d_add.  So we safely go that way to get to its underlying dentry.
+	 */
+	fsstack_copy_attr_atime(dentry->d_parent->d_inode, lower_dir_dentry->d_inode);
+
 	d_add(dentry, inode); /* add positive dentry */
 
-	/* update parent directory's atime */
-	fsstack_copy_attr_atime(dentry->d_parent->d_inode, wrapfs_lower_inode(dentry->d_parent->d_inode));
 out:
 	/* if a real dentry is returned here, dput() will be called on it.
 	 * if NULL is returned positive/negative dentry from params will be used without dput().
