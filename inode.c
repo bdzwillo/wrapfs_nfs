@@ -185,10 +185,10 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	if (err)
 		goto out;
 
-	fsstack_copy_attr_times(dir, wrapfs_lower_inode(dir));
+	fsstack_copy_attr_times(dir, lower_parent_dentry->d_inode);
 	fsstack_copy_inode_size(dir, lower_parent_dentry->d_inode);
 	/* update number of links on parent directory */
-	set_nlink(dir, wrapfs_lower_inode(dir)->i_nlink);
+	set_nlink(dir, lower_parent_dentry->d_inode->i_nlink);
 out:
 	unlock_dir(lower_parent_dentry);
 	if (!dentry->d_inode)
