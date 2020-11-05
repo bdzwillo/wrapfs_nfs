@@ -149,6 +149,10 @@ static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 	err = vfs_symlink(lower_parent_dentry->d_inode, lower_dentry, symname);
 	if (err)
 		goto out;
+	if (!lower_dentry->d_inode) {
+		pr_debug("wrapfs: symlink(%pd4) warn: lower dentry negative", dentry);
+		goto out;
+	}
 	err = wrapfs_interpose(dentry, dir->i_sb, lower_dentry);
 	if (err)
 		goto out;
@@ -180,7 +184,10 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	err = vfs_mkdir(lower_parent_dentry->d_inode, lower_dentry, mode);
 	if (err)
 		goto out;
-
+	if (!lower_dentry->d_inode) {
+		pr_debug("wrapfs: mkdir(%pd4) warn: lower dentry negative", dentry);
+		goto out;
+	}
 	err = wrapfs_interpose(dentry, dir->i_sb, lower_dentry);
 	if (err)
 		goto out;
@@ -252,7 +259,10 @@ static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	err = vfs_mknod(lower_parent_dentry->d_inode, lower_dentry, mode, dev);
 	if (err)
 		goto out;
-
+	if (!lower_dentry->d_inode) {
+		pr_debug("wrapfs: mknod(%pd4) warn: lower dentry negative", dentry);
+		goto out;
+	}
 	err = wrapfs_interpose(dentry, dir->i_sb, lower_dentry);
 	if (err)
 		goto out;
@@ -550,6 +560,10 @@ static int wrapfs_setxattr(struct dentry *dentry, const char *name, const void *
 	err = vfs_setxattr(lower_dentry, name, value, size, flags);
 	if (err)
 		goto out;
+	if (!lower_dentry->d_inode) {
+		pr_debug("wrapfs: setxattr(%pd4) warn: lower_dentry negative", dentry);
+		goto out;
+	}
 	fsstack_copy_attr_all(dentry->d_inode, lower_dentry->d_inode);
 out:
 	return err;
