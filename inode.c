@@ -104,8 +104,21 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 	dget(lower_dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
 
-	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
-	err = vfs_unlink(lower_dir_inode, lower_dentry, NULL);
+	/* check that underlying dentry of victim is still hashed and
+	 * has the right parent - it can be moved, but it can't be moved to/from
+	 * the directory we are holding exclusive.  So while ->d_parent itself
+	 * might not be stable, the result of comparison is
+	 */
+	if (lower_dentry->d_parent != lower_dir_dentry) {
+		pr_debug("wrapfs: unlink(%pd4) warn: lower parent mismatch", dentry);
+		err = -EINVAL;
+	} else if (d_unhashed(lower_dentry)) {
+		pr_debug("wrapfs: unlink(%pd4) warn: lower unhashed", dentry);
+		err = -EINVAL;
+	} else {
+		/* todo: might handle &delegated_inode to avoid nfs long delegation break */
+		err = vfs_unlink(lower_dir_inode, lower_dentry, NULL);
+	}
 
 	/*
 	 * Note: unlinking on top of NFS can cause silly-renamed files.
@@ -221,8 +234,21 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 	lower_dir_dentry = lock_parent(lower_dentry);
 	lower_dir_inode = lower_dir_dentry->d_inode;
 
+	/* check that underlying dentry of victim is still hashed and
+	 * has the right parent - it can be moved, but it can't be moved to/from
+	 * the directory we are holding exclusive.  So while ->d_parent itself
+	 * might not be stable, the result of comparison is
+	 */
 	dget(lower_dentry);
-	err = vfs_rmdir(lower_dir_inode, lower_dentry);
+	if (lower_dentry->d_parent != lower_dir_dentry) {
+		pr_debug("wrapfs: rmdir(%pd4) warn: lower parent mismatch", dentry);
+		err = -EINVAL;
+	} else if (d_unhashed(lower_dentry)) {
+		pr_debug("wrapfs: rmdir(%pd4) warn: lower unhashed", dentry);
+		err = -EINVAL;
+	} else {
+		err = vfs_rmdir(lower_dir_inode, lower_dentry);
+	}
 	dput(lower_dentry);
 	if (err)
 		goto out;
@@ -304,6 +330,21 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	lower_new_dir_dentry = dget_parent(lower_new_dentry);
 
 	trap = lock_rename(lower_old_dir_dentry, lower_new_dir_dentry);
+
+	/* check that dentries still have the same parents and are not unlinked */
+	err = -EINVAL;
+	if (lower_old_dentry->d_parent != lower_old_dir_dentry) {
+		pr_debug("wrapfs: rename(%pd4) warn: lower old parent mismatch", old_dentry);
+		goto out;
+	}
+	if (lower_new_dentry->d_parent != lower_new_dir_dentry) {
+		pr_debug("wrapfs: rename(%pd4) warn: lower new parent mismatch", old_dentry);
+		goto out;
+	}
+	if (d_unhashed(lower_old_dentry) || d_unhashed(lower_new_dentry)) {
+		pr_debug("wrapfs: rename(%pd4) warn: lower unhashed", old_dentry);
+		goto out;
+	}
 	/* source should not be ancestor of target */
 	if (trap == lower_old_dentry) {
 		err = -EINVAL;
