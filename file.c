@@ -49,6 +49,9 @@ static ssize_t wrapfs_write(struct file *file, const char __user *buf,
 	return err;
 }
 
+/* For ->iterate() the caller holds the file->f_inode lock.
+ * (see: Documentation/filesystems/locking)
+ */
 static int wrapfs_readdir(struct file *file, struct dir_context *ctx)
 {
 	int err;
@@ -138,6 +141,10 @@ static int wrapfs_mmap(struct file *file, struct vm_area_struct *vma)
 	return err;
 }
 
+/* The caller of ->open() holds no inode lock. 
+ * The caller also holds a reference on f->f_path.dentry & f->f_path.mnt
+ * (see: Documentation/filesystems/Locking)
+ */
 static int wrapfs_open(struct inode *inode, struct file *file)
 {
 	int err = 0;
@@ -163,9 +170,7 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 	 * (hold a lower_path reference to protect against concurrent ops like unlink)
 	 */
 	pathcpy(&lower_path, &WRAPFS_D(file->f_path.dentry)->lower_path);
-	path_get(&lower_path);
 	lower_file = dentry_open(&lower_path, file->f_flags, current_cred());
-	path_put(&lower_path);
 	if (IS_ERR(lower_file)) {
 		err = PTR_ERR(lower_file);
 		lower_file = wrapfs_lower_file(file);
@@ -364,6 +369,12 @@ static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
  * For regular files generic_file_llseek is sufficient, because all
  * the read()/write() calls are called with a file->f_pos parameter
  * from the vfs-layer.
+ *
+ * note: It should be safe to acquire the inode mutex or just to use
+ *       i_size_read() here. This does not protect the file->f_pos
+ *       against concurrent modifications since this is something the
+ *       userspace has to take care about.
+ *       (see: Documentation/filesystems/Locking) 
  */
 static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 {
