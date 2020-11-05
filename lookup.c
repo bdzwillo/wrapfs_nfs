@@ -197,9 +197,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	lower_dir_dentry = wrapfs_get_lower_dentry(dentry->d_parent);
 	lower_dir_mnt	 = wrapfs_get_lower_path(dentry->d_parent)->mnt;
 
-	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
- 	lower_dentry = lookup_one_len(dentry->d_name.name, lower_dir_dentry, dentry->d_name.len);
- 	mutex_unlock(&lower_dir_dentry->d_inode->i_mutex);
+ 	lower_dentry = lookup_one_len_unlocked(dentry->d_name.name, lower_dir_dentry, dentry->d_name.len);
 	if (IS_ERR(lower_dentry)) {
 		pr_debug("wrapfs: lookup(%pd4, 0x%x) -> err %d\n", dentry, flags, (int)PTR_ERR(lower_dentry));
 		ret_dentry = lower_dentry;
