@@ -167,7 +167,7 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 	}
 
 	/* open lower object and link wrapfs's file struct to lower's
-	 * (hold a lower_path reference to protect against concurrent ops like unlink)
+	 * (dentry_open()->do_dentry_open() will hold a reference on lower_path)
 	 */
 	pathcpy(&lower_path, &WRAPFS_D(file->f_path.dentry)->lower_path);
 	lower_file = dentry_open(&lower_path, file->f_flags, current_cred());
