@@ -69,7 +69,7 @@ static int wrapfs_inode_set(struct inode *inode, void *lower_inode)
 	return 0;
 }
 
-struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
+struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 {
 	struct inode *inode; /* the new inode to return */
 
@@ -122,7 +122,16 @@ struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 	fsstack_copy_attr_all(inode, lower_inode);
 	fsstack_copy_inode_size(inode, lower_inode);
 
-	unlock_new_inode(inode);
+	return inode;
+}
+
+struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
+{
+	struct inode *inode = _wrapfs_iget(sb, lower_inode);
+
+	if (!IS_ERR(inode) && (inode->i_state & I_NEW)) {
+		unlock_new_inode(inode);
+	}
 	return inode;
 }
 
@@ -150,7 +159,7 @@ static struct inode *wrapfs_get_inode(struct dentry *dentry,
 	 */
 
 	/* inherit lower inode number for wrapfs's inode */
-	inode = wrapfs_iget(sb, lower_inode);
+	inode = _wrapfs_iget(sb, lower_inode);
 	return inode;
 }
 
@@ -172,7 +181,14 @@ int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
 	if (IS_ERR(inode)) {
 		return PTR_ERR(inode);
 	}
-	d_instantiate(dentry, inode);
+	/* d_instantiate_new() avoids inode locking races between
+	 * unlock_new_inode() and d_instantiate().
+	 */
+	if (inode->i_state & I_NEW) {
+		d_instantiate_new(dentry, inode);
+	} else {
+		d_instantiate(dentry, inode);
+	}
 	return 0;
 }
 
@@ -241,6 +257,9 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 		/* path_put underlying path on error */
 		wrapfs_put_reset_lower_path(dentry);
 		goto out;
+	}
+	if (inode->i_state & I_NEW) {
+		unlock_new_inode(inode);
 	}
 	/* update parent directory's atime
 	 *
