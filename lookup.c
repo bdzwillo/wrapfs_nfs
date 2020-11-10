@@ -69,7 +69,7 @@ static int wrapfs_inode_set(struct inode *inode, void *lower_inode)
 	return 0;
 }
 
-struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
+struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 {
 	struct inode *inode; /* the new inode to return */
 
@@ -122,7 +122,16 @@ struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 	fsstack_copy_attr_all(inode, lower_inode);
 	fsstack_copy_inode_size(inode, lower_inode);
 
-	unlock_new_inode(inode);
+	return inode;
+}
+
+struct inode *wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
+{
+	struct inode *inode = _wrapfs_iget(sb, lower_inode);
+
+	if (!IS_ERR(inode) && (inode->i_state & I_NEW)) {
+		unlock_new_inode(inode);
+	}
 	return inode;
 }
 
@@ -150,7 +159,7 @@ static struct inode *wrapfs_get_inode(struct dentry *dentry,
 	 */
 
 	/* inherit lower inode number for wrapfs's inode */
-	inode = wrapfs_iget(sb, lower_inode);
+	inode = _wrapfs_iget(sb, lower_inode);
 	return inode;
 }
 
@@ -172,15 +181,25 @@ int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
 	if (IS_ERR(inode)) {
 		return PTR_ERR(inode);
 	}
-	d_instantiate(dentry, inode);
+	/* d_instantiate_new() avoids inode locking races between
+	 * unlock_new_inode() and d_instantiate().
+	 */
+	if (inode->i_state & I_NEW) {
+		d_instantiate_new(dentry, inode);
+	} else {
+		d_instantiate(dentry, inode);
+	}
 	return 0;
 }
 
-/*
- * wrapfs lookup
+/* For ->lookup() the caller holds the inode lock on dir.
+ * The caller also holds a reference on dentry.
+ * (see: Documentation/filesystems/Locking)
  *
- * Returns: NULL (ok), ERR_PTR if an error occurred.
  * Fills in positive/negative dentry->d_inode on success.
+ * - returns NULL if dentry passed as param is ok.
+ * - returns a new dentry, if dentry was disconnected (the caller will call dput() on it)
+ * - returns ERR_PTR if an error occurred.
  */
 struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 			     unsigned int flags)
@@ -239,6 +258,9 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 		wrapfs_put_reset_lower_path(dentry);
 		goto out;
 	}
+	if (inode->i_state & I_NEW) {
+		unlock_new_inode(inode);
+	}
 	/* update parent directory's atime
 	 *
 	 * note: there's nothing to prevent losing a timeslice to preemtion in
@@ -254,11 +276,27 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	 */
 	fsstack_copy_attr_atime(dentry->d_parent->d_inode, lower_dir_dentry->d_inode);
 
-	d_add(dentry, inode); /* add positive dentry */
-
-out:
-	/* if a real dentry is returned here, dput() will be called on it.
-	 * if NULL is returned positive/negative dentry from params will be used without dput().
+	/* d_splice_alias() ensures that only one dentry is pointing to the inode,
+	 * and returns the other dentry if one is found. It performs d_add() for the dentry.
+	 *
+	 * note: the dentry might have been disconnected and a new dentry might have
+	 *       been allocated for the same path while lookup() was running.
+	 *       For directories there must never point two dentries to the same inode,
+	 *       otherwise a deadlock can happen - especially when lock_rename() is
+	 *       called in a rename operation.
 	 */
+	ret_dentry = d_splice_alias(inode, dentry); /* add positive dentry */
+	if (ret_dentry) {
+		if (IS_ERR(ret_dentry)) {
+			/* might use d_find_any_alias(inode) to log other dentry.
+			 *
+			 * note: when revalidate returns 0 for a directory, an unhashed
+			 * alias dentry might be found after the vfs called d_invalidate(), 
+			 * and d_splice_alias() will return EIO here.
+			 */
+			pr_debug("wrapfs: lookup(%pd4) warn: splice error %d\n", dentry, (int)PTR_ERR(ret_dentry));
+		}
+	}
+out:
 	return ret_dentry;
 }
