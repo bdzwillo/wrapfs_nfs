@@ -279,21 +279,21 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	/* d_splice_alias() ensures that only one dentry is pointing to the inode,
 	 * and returns the other dentry if one is found. It performs d_add() for the dentry.
 	 *
-	 * note: the dentry might have been disconnected and a new dentry might have
-	 *       been allocated for the same path while lookup() was running.
-	 *       For directories there must never point two dentries to the same inode,
+	 * note: For directories there must never point two dentries to the same inode,
 	 *       otherwise a deadlock can happen - especially when lock_rename() is
 	 *       called in a rename operation.
+	 *
+	 * note: in linux-3.19 the remote rename support from d_materialise_unique()
+	 *       was merged into d_splice_alias(). The old d_splice_alias() would
+	 *       return EIO when an unhashed directory entry was found.
 	 */
+#if NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT
+	ret_dentry = d_materialise_unique(dentry, inode); /* add positive dentry */
+#else
 	ret_dentry = d_splice_alias(inode, dentry); /* add positive dentry */
+#endif
 	if (ret_dentry) {
 		if (IS_ERR(ret_dentry)) {
-			/* might use d_find_any_alias(inode) to log other dentry.
-			 *
-			 * note: when revalidate returns 0 for a directory, an unhashed
-			 * alias dentry might be found after the vfs called d_invalidate(), 
-			 * and d_splice_alias() will return EIO here.
-			 */
 			pr_debug("wrapfs: lookup(%pd4) warn: splice error %d\n", dentry, (int)PTR_ERR(ret_dentry));
 		}
 	}
