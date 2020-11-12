@@ -28,6 +28,7 @@
 #include <linux/sched.h>
 #include <linux/xattr.h>
 #include <linux/exportfs.h>
+#include <linux/version.h>
 
 /* the file system name */
 #define WRAPFS_NAME "wrapfs"
@@ -35,6 +36,12 @@
 #if 1
 // from magic.h
 #define WRAPFS_SUPER_MAGIC     0xb550ca10
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0)
+#if !defined(RHEL_MAJOR) || RHEL_MAJOR <= 7
+#define NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT 1
+#endif
 #endif
 
 /* wrapfs root inode number */
