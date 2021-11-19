@@ -3,6 +3,7 @@
  * Copyright (c) 2009	   Shrikar Archak
  * Copyright (c) 2003-2020 Stony Brook University
  * Copyright (c) 2003-2020 The Research Foundation of SUNY
+ * Copyright (c) 2020-2021 Barnim Dzwillo @ Strato AG
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -162,6 +163,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	/* no longer needed: wrapfs_free_dentry_private_data(sb->s_root); */
 out_freeroot:
 	dput(sb->s_root);
+	sb->s_root = NULL;
 out_sput:
 	/* drop refs we took earlier */
 	atomic_dec(&lower_sb->s_active);
@@ -239,9 +241,9 @@ static void __exit exit_wrapfs_fs(void)
 	pr_info("Completed wrapfs module unload\n");
 }
 
-MODULE_AUTHOR("Erez Zadok, Filesystems and Storage Lab, Stony Brook University"
-	      " (http://www.fsl.cs.sunysb.edu/)");
-MODULE_DESCRIPTION("wrapfs " WRAPFS_VERSION 
+MODULE_AUTHOR("Original Wrapfs from Erez Zadok, Filesystems and Storage Lab, Stony Brook University"
+ 	      " (http://www.fsl.cs.sunysb.edu/)");
+MODULE_DESCRIPTION("wrapfs_nfs " WRAPFS_VERSION 
                    " (based on Wrapfs from http://wrapfs.filesystems.org/)");
 MODULE_LICENSE("GPL");
 

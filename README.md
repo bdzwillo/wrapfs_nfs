@@ -11,8 +11,9 @@ and supports operation as a loopback filesystem on top of an underlying nfs moun
   like ecryptfs and overlayfs seem to originate from wrapfs.
 
 - since the original wrapfs does only support the vanilla kernel, it needed some
-  adjustments to compile on centos. For the linux-3.10.0-1127.10.1.el7 kernel the best
-  match was wrapfs-v3.15.10-96 from http://download.filesystems.org/wrapfs/patches/.
+  adjustments to compile on centos. For the centos-7.8 kernel the best match was
+  wrapfs-v3.15.10-96 from http://download.filesystems.org/wrapfs/patches/. The
+  current version is compatible to the centos-7.9 linux-3.10.0-1160.36.2.el7 kernel.
 
 - this wrapfs version fixes some bugs when mounted on top of a remote filesystem.
   It also includes some simplifications for the lookup-, locking- & mmap-code based 

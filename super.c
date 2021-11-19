@@ -3,6 +3,7 @@
  * Copyright (c) 2009	   Shrikar Archak
  * Copyright (c) 2003-2020 Stony Brook University
  * Copyright (c) 2003-2020 The Research Foundation of SUNY
+ * Copyright (c) 2020-2021 Barnim Dzwillo @ Strato AG
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
