@@ -211,8 +211,51 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 {
 	struct file *lower_file;
 
+	pr_debug("wrapfs: file_release(%pD4, %s:%lu)\n", file, inode ? inode->i_sb->s_id : "NULL", inode ? inode->i_ino : 0);
+
 	lower_file = wrapfs_lower_file(file);
 	if (lower_file) {
+#if defined(WRAP_REMOTE_FILE_LOCKS)
+		struct inode *inode_lower = locks_inode(lower_file);
+
+		/* Avoid 'leftover lock' warnings from locks_remove_file() when
+		 * a process does not unlock a posix lock.
+		 *
+		 * The file_lock list is located at the lower inode and fl_file
+		 * points to lower_file (the lock request is copied in 
+		 * posix_lock_file() when it is inserted to the i_flock list).
+		 *
+		 * Unlock of posix locks is not triggered when an overlayfs is
+		 * mounted on top, because filp_close() does not see the i_flock
+		 * of the lower_file. 
+		 *
+		 * So the unlock the lower posix locks is triggerd here with
+		 * the matching owner, when the last reference to the file is
+		 * removed.
+		 */
+		if (inode_lower->i_flock) {
+			int n = 0;
+			int o = 0;
+			struct file_lock *fl;
+			fl_owner_t owner = current->files; // default owner of non-OFD posix locks
+
+			spin_lock(&inode_lower->i_lock);
+			for (fl = inode_lower->i_flock; fl != NULL; fl = fl->fl_next) {
+				if (fl->fl_flags & FL_POSIX) {
+					if (fl->fl_file == lower_file) {
+						owner = fl->fl_owner;
+						o++;
+					}
+				}
+				n++;
+			}
+			spin_unlock(&inode_lower->i_lock);
+			if (o) {
+				locks_remove_posix(lower_file, owner);
+				pr_debug("wrapfs: file_release(%pD4) remove posix lock (%s:%lu) nlocks %d owned %d\n", file, inode_lower->i_sb->s_id, inode_lower->i_ino, n, o);
+			}
+		}
+#endif
 		wrapfs_set_lower_file(file, NULL);
 		fput(lower_file);
 	}
@@ -319,6 +362,8 @@ static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 	/* F_*LK cmds are defined in fcntl.h (F_GETLK=5, F_SETLK=6, F_SETLKW=7)
  	 * F_*LCK types are defined in fcntl.h (F_RDLCK=0, F_WRLCK=1, F_UNLCK=2)
 	 * FL_* flags are defined in linux/fs.h (FL_POSIX=1, FL_FLOCK=2, FL_SLEEP=128, ..)
+	 *
+	 * posix locks use 'fl->fl_owner == current->files' here.
 	 */
 	pr_debug("wrapfs: lock(%pD4, %d, t=0x%x, fl=0x%x, r=%lld:%lld)\n", filp, cmd, fl->fl_type, fl->fl_flags, (long long)fl->fl_start, (long long)fl->fl_end);
 
@@ -343,6 +388,8 @@ static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
 	/* F_*LK cmds are defined in fctnl.h ((flock_cmd & LOCK_NB) ? F_SETLK=6 : F_SETLKW=7)
  	 * F_*LCK types are defined in fcntl.h (F_RDLCK=0 (flock_cmd:LOCK_SH), F_WRLCK=1 (flock_cmd:LOCK_EX), F_UNLCK=2 (flock_cmd:LOCK_UN))
 	 * FL_* flags are defined in linux/fs.h (FL_POSIX=1, FL_FLOCK=2, FL_SLEEP=128, ..)
+	 *
+	 * flocks use 'fl->fl_owner == filp' here.
 	 */
 	pr_debug("wrapfs: flock(%pD4, %d, t=0x%x, fl=0x%x)\n", filp, cmd, fl->fl_type, fl->fl_flags);
 
