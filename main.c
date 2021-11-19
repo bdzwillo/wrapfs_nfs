@@ -108,6 +108,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	/* no longer needed: wrapfs_free_dentry_private_data(sb->s_root); */
 out_freeroot:
 	dput(sb->s_root);
+	sb->s_root = NULL;
 out_sput:
 	/* drop refs we took earlier */
 	atomic_dec(&lower_sb->s_active);
