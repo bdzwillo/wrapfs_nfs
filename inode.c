@@ -311,8 +311,14 @@ out:
  * The caller also holds references on old_dentry and new_dentry.
  * (see: Documentation/filesystems/directory-locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
+static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
+			 struct inode *new_dir, struct dentry *new_dentry,
+			 unsigned int flags)
+#else
 static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			 struct inode *new_dir, struct dentry *new_dentry)
+#endif
 {
 	int err = 0;
 	struct dentry *lower_old_dentry = NULL;
@@ -320,7 +326,10 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct dentry *lower_old_dir_dentry = NULL;
 	struct dentry *lower_new_dir_dentry = NULL;
 	struct dentry *trap = NULL;
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
+	if (flags)
+		return -EINVAL;
+#endif
 	pr_debug("wrapfs: rename(%pd4, %pd4)\n", old_dentry, new_dentry);
 
 	lower_old_dentry = wrapfs_get_lower_dentry(old_dentry);
