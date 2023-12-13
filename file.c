@@ -181,7 +181,9 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 		}
 	} else {
 		wrapfs_set_lower_file(file, lower_file);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0)
 		file->f_mode |= FMODE_KABI_ITERATE;
+#endif
 	}
 
 	if (err)
