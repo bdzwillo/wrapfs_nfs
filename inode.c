@@ -30,22 +30,22 @@ static int wrapfs_create(struct inode *dir, struct dentry *dentry,
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
-	err = vfs_create(lower_parent_dentry->d_inode, lower_dentry, mode,
+	err = vfs_create(d_inode(lower_parent_dentry), lower_dentry, mode,
 			 want_excl);
 	if (err)
 		goto out;
 	err = wrapfs_interpose(dentry, dir->i_sb, lower_dentry);
 	if (err)
 		goto out;
-	fsstack_copy_attr_times(dir, lower_parent_dentry->d_inode);
-	fsstack_copy_inode_size(dir, lower_parent_dentry->d_inode);
+	fsstack_copy_attr_times(dir, d_inode(lower_parent_dentry));
+	fsstack_copy_inode_size(dir, d_inode(lower_parent_dentry));
 out:
 	unlock_dir(lower_parent_dentry);
 	return err;
 }
 
 /* For ->link() the caller holds the inode locks on dir and on the
- * victim old_dentry->d_inode. The caller also holds a reference
+ * victim d_inode(old_dentry). The caller also holds a reference
  * on old_dentry & new_dentry;
  * (see: Documentation/filesystems/directory-locking)
  */
@@ -60,7 +60,7 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 
 	pr_debug("wrapfs: link(%pd4, %pd4)\n", old_dentry, new_dentry);
 
-	file_size_save = i_size_read(old_dentry->d_inode);
+	file_size_save = i_size_read(d_inode(old_dentry));
 	lower_old_dentry = wrapfs_get_lower_dentry(old_dentry);
 	lower_new_dentry = wrapfs_get_lower_dentry(new_dentry);
 	dget(lower_old_dentry);
@@ -68,19 +68,19 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 	lower_dir_dentry = lock_parent(lower_new_dentry);
 
 	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
-	err = vfs_link(lower_old_dentry, lower_dir_dentry->d_inode,
+	err = vfs_link(lower_old_dentry, d_inode(lower_dir_dentry),
 		       lower_new_dentry, NULL);
-	if (err || !lower_new_dentry->d_inode)
+	if (err || !d_inode(lower_new_dentry))
 		goto out;
 
 	err = wrapfs_interpose(new_dentry, dir->i_sb, lower_new_dentry);
 	if (err)
 		goto out;
-	fsstack_copy_attr_times(dir, lower_dir_dentry->d_inode);
-	fsstack_copy_inode_size(dir, lower_dir_dentry->d_inode);
-	set_nlink(old_dentry->d_inode,
-		  wrapfs_lower_inode(old_dentry->d_inode)->i_nlink);
-	i_size_write(new_dentry->d_inode, file_size_save);
+	fsstack_copy_attr_times(dir, d_inode(lower_dir_dentry));
+	fsstack_copy_inode_size(dir, d_inode(lower_dir_dentry));
+	set_nlink(d_inode(old_dentry),
+		  wrapfs_lower_inode(d_inode(old_dentry))->i_nlink);
+	i_size_write(d_inode(new_dentry), file_size_save);
 out:
 	unlock_dir(lower_dir_dentry);
 	dput(lower_new_dentry);
@@ -89,7 +89,7 @@ out:
 }
 
 /* For ->unlink() the caller holds the inode locks on dir and on the
- * victim dentry->d_inode. The caller also holds a reference on dentry.
+ * victim d_inode(dentry). The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/directory-locking)
  */
 static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
@@ -133,9 +133,9 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 		goto out;
 	fsstack_copy_attr_times(dir, lower_dir_inode);
 	fsstack_copy_inode_size(dir, lower_dir_inode);
-	set_nlink(dentry->d_inode,
-		  wrapfs_lower_inode(dentry->d_inode)->i_nlink);
-	dentry->d_inode->i_ctime = dir->i_ctime;
+	set_nlink(d_inode(dentry),
+		  wrapfs_lower_inode(d_inode(dentry))->i_nlink);
+	d_inode(dentry)->i_ctime = dir->i_ctime;
 	d_drop(dentry); /* this is needed, else LTP fails (VFS won't do it) */
 out:
 	unlock_dir(lower_dir_dentry);
@@ -160,22 +160,22 @@ static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 	dget(lower_dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
-	err = vfs_symlink(lower_parent_dentry->d_inode, lower_dentry, symname);
+	err = vfs_symlink(d_inode(lower_parent_dentry), lower_dentry, symname);
 	if (err)
 		goto out;
-	if (!lower_dentry->d_inode) {
+	if (!d_inode(lower_dentry)) {
 		pr_debug("wrapfs: symlink(%pd4) warn: lower dentry negative", dentry);
 		goto out;
 	}
 	err = wrapfs_interpose(dentry, dir->i_sb, lower_dentry);
 	if (err)
 		goto out;
-	fsstack_copy_attr_times(dir, lower_parent_dentry->d_inode);
-	fsstack_copy_inode_size(dir, lower_parent_dentry->d_inode);
+	fsstack_copy_attr_times(dir, d_inode(lower_parent_dentry));
+	fsstack_copy_inode_size(dir, d_inode(lower_parent_dentry));
 out:
 	unlock_dir(lower_parent_dentry);
 	dput(lower_dentry);
- 	if (!dentry->d_inode)
+ 	if (!d_inode(dentry))
 		d_drop(dentry);
 	return err;
 }
@@ -195,10 +195,10 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
-	err = vfs_mkdir(lower_parent_dentry->d_inode, lower_dentry, mode);
+	err = vfs_mkdir(d_inode(lower_parent_dentry), lower_dentry, mode);
 	if (err)
 		goto out;
-	if (!lower_dentry->d_inode) {
+	if (!d_inode(lower_dentry)) {
 		pr_debug("wrapfs: mkdir(%pd4) warn: lower dentry negative", dentry);
 		goto out;
 	}
@@ -206,19 +206,19 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	if (err)
 		goto out;
 
-	fsstack_copy_attr_times(dir, lower_parent_dentry->d_inode);
-	fsstack_copy_inode_size(dir, lower_parent_dentry->d_inode);
+	fsstack_copy_attr_times(dir, d_inode(lower_parent_dentry));
+	fsstack_copy_inode_size(dir, d_inode(lower_parent_dentry));
 	/* update number of links on parent directory */
-	set_nlink(dir, lower_parent_dentry->d_inode->i_nlink);
+	set_nlink(dir, d_inode(lower_parent_dentry)->i_nlink);
 out:
 	unlock_dir(lower_parent_dentry);
-	if (!dentry->d_inode)
+	if (!d_inode(dentry))
 		d_drop(dentry);
 	return err;
 }
 
 /* For ->rmdir() the caller holds the inode locks on dir and on the
- * victim dentry->d_inode. The caller also holds a reference on dentry.
+ * victim d_inode(dentry). The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/directory-locking)
  */
 static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
@@ -233,7 +233,7 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	dget(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
-	lower_dir_inode = lower_dir_dentry->d_inode;
+	lower_dir_inode = d_inode(lower_dir_dentry);
 
 	/* check that underlying dentry of victim is still hashed and
 	 * has the right parent - it can be moved, but it can't be moved to/from
@@ -254,8 +254,8 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 	if (err)
 		goto out;
 
-	if (dentry->d_inode)
-		clear_nlink(dentry->d_inode);
+	if (d_inode(dentry))
+		clear_nlink(d_inode(dentry));
 	fsstack_copy_attr_times(dir, lower_dir_inode);
 	fsstack_copy_inode_size(dir, lower_dir_inode);
 	set_nlink(dir, lower_dir_inode->i_nlink);
@@ -283,21 +283,21 @@ static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_parent_dentry = lock_parent(lower_dentry);
 
-	err = vfs_mknod(lower_parent_dentry->d_inode, lower_dentry, mode, dev);
+	err = vfs_mknod(d_inode(lower_parent_dentry), lower_dentry, mode, dev);
 	if (err)
 		goto out;
-	if (!lower_dentry->d_inode) {
+	if (!d_inode(lower_dentry)) {
 		pr_debug("wrapfs: mknod(%pd4) warn: lower dentry negative", dentry);
 		goto out;
 	}
 	err = wrapfs_interpose(dentry, dir->i_sb, lower_dentry);
 	if (err)
 		goto out;
-	fsstack_copy_attr_times(dir, lower_parent_dentry->d_inode);
-	fsstack_copy_inode_size(dir, lower_parent_dentry->d_inode);
+	fsstack_copy_attr_times(dir, d_inode(lower_parent_dentry));
+	fsstack_copy_inode_size(dir, d_inode(lower_parent_dentry));
 out:
 	unlock_dir(lower_parent_dentry);
-	if (!dentry->d_inode)
+	if (!d_inode(dentry))
 		d_drop(dentry);
 	return err;
 }
@@ -306,8 +306,8 @@ out:
  * For ->rename() between different directorys, the caller holds the superblock
  * lock i_sb->s_vfs_rename_mutex and the inode locks on old_dir and new_dir.
  * For ->rename() in the same directory just the old_dir inode lock is held.
- * The caller also holds the inode locks on the victims new_dentry->d_inode
- * and old_dentry->d_inode (if old_entry is not a directory).
+ * The caller also holds the inode locks on the victims d_inode(new_dentry)
+ * and d_inode(old_dentry) (if old_entry is not a directory).
  * The caller also holds references on old_dentry and new_dentry.
  * (see: Documentation/filesystems/directory-locking)
  */
@@ -358,19 +358,19 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	}
 
 	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
-	err = vfs_rename(lower_old_dir_dentry->d_inode, lower_old_dentry,
-			 lower_new_dir_dentry->d_inode, lower_new_dentry,
+	err = vfs_rename(d_inode(lower_old_dir_dentry), lower_old_dentry,
+			 d_inode(lower_new_dir_dentry), lower_new_dentry,
 			 NULL, 0);
 	if (err)
 		goto out;
 
-	fsstack_copy_attr_all(new_dir, lower_new_dir_dentry->d_inode);
-	fsstack_copy_inode_size(new_dir, lower_new_dir_dentry->d_inode);
+	fsstack_copy_attr_all(new_dir, d_inode(lower_new_dir_dentry));
+	fsstack_copy_inode_size(new_dir, d_inode(lower_new_dir_dentry));
 	if (new_dir != old_dir) {
 		fsstack_copy_attr_all(old_dir,
-				      lower_old_dir_dentry->d_inode);
+				      d_inode(lower_old_dir_dentry));
 		fsstack_copy_inode_size(old_dir,
-					lower_old_dir_dentry->d_inode);
+					d_inode(lower_old_dir_dentry));
 	}
 out:
 	unlock_rename(lower_old_dir_dentry, lower_new_dir_dentry);
@@ -381,7 +381,7 @@ out:
 	return err;
 }
 
-/* For ->readlink() the caller holds *no* inode lock on dentry->d_inode
+/* For ->readlink() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
 static int wrapfs_readlink(struct dentry *dentry, char __user *buf, int bufsiz)
@@ -392,22 +392,22 @@ static int wrapfs_readlink(struct dentry *dentry, char __user *buf, int bufsiz)
 	pr_debug("wrapfs: readlink(%pd4)\n", dentry);
 
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	if (!lower_dentry->d_inode->i_op ||
-	    !lower_dentry->d_inode->i_op->readlink) {
+	if (!d_inode(lower_dentry)->i_op ||
+	    !d_inode(lower_dentry)->i_op->readlink) {
 		err = -EINVAL;
 		goto out;
 	}
 
-	err = lower_dentry->d_inode->i_op->readlink(lower_dentry,
+	err = d_inode(lower_dentry)->i_op->readlink(lower_dentry,
 						    buf, bufsiz);
 	if (err < 0)
 		goto out;
-	fsstack_copy_attr_atime(dentry->d_inode, lower_dentry->d_inode);
+	fsstack_copy_attr_atime(d_inode(dentry), d_inode(lower_dentry));
 out:
 	return err;
 }
 
-/* For ->follow_link() the caller holds *no* inode lock on dentry->d_inode
+/* For ->follow_link() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
 static void *wrapfs_follow_link(struct dentry *dentry, struct nameidata *nd)
@@ -439,7 +439,7 @@ out:
 	return NULL;
 }
 
-/* For ->permission() the caller holds *no* inode lock on dentry->d_inode
+/* For ->permission() the caller holds *no* inode lock on d_inode(dentry)
  * Also ->permission() may not block if called in rcu-walk mode (mask & MAY_NOT_BLOCK).
  * (see: Documentation/filesystems/Locking)
  */
@@ -467,7 +467,7 @@ static int wrapfs_permission(struct inode *inode, int mask)
 	return err;
 }
 
-/* For ->setattr() the caller holds the inode lock on dentry->d_inode.
+/* For ->setattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
 static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
@@ -482,7 +482,7 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	 */
 	pr_debug("wrapfs: setattr(%pd4, 0x%x)\n", dentry, ia->ia_valid);
 
-	inode = dentry->d_inode;
+	inode = d_inode(dentry);
 
 	/*
 	 * Check if user has permission to change inode.  We don't check if
@@ -526,7 +526,7 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 
 	/* notify the (possibly copied-up) lower inode */
 	/*
-	 * Note: we use lower_dentry->d_inode, because lower_inode may be
+	 * Note: we use d_inode(lower_dentry), because lower_inode may be
 	 * unlinked (no inode->i_sb and i_ino==0.  This happens if someone
 	 * tries to open(), unlink(), then ftruncate() a file.
 	 */
@@ -548,7 +548,7 @@ out:
 	return err;
 }
 
-/* For ->getattr() the caller holds *no* inode lock on dentry->d_inode
+/* For ->getattr() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
 static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
@@ -562,29 +562,29 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_mnt    = wrapfs_get_lower_path(dentry)->mnt;
 
-	if (!lower_dentry->d_inode->i_op->getattr)
+	if (!d_inode(lower_dentry)->i_op->getattr)
 		goto out;
-	err = lower_dentry->d_inode->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
+	err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
 
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
 	if (err)
 		goto out;
-	fsstack_copy_attr_all(dentry->d_inode, wrapfs_lower_inode(dentry->d_inode));
+	fsstack_copy_attr_all(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
 	if (lower_dentry->d_flags & DCACHE_OP_REVALIDATE) {
 		/* on top of nfs or other remote filesystem i_size/i_blocks
 		 * might have changed after the last revalidate.
 		 */
-		fsstack_copy_inode_size(dentry->d_inode, wrapfs_lower_inode(dentry->d_inode));
+		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
 	} else {
-		stat->blocks = wrapfs_lower_inode(dentry->d_inode)->i_blocks;
+		stat->blocks = wrapfs_lower_inode(d_inode(dentry))->i_blocks;
 	}
-	generic_fillattr(dentry->d_inode, stat);
+	generic_fillattr(d_inode(dentry), stat);
 out:
 	return err;
 }
 
-/* For ->setxattr() the caller holds the inode lock on dentry->d_inode.
+/* For ->setxattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
 static int wrapfs_setxattr(struct dentry *dentry, const char *name, const void *value,
@@ -595,23 +595,23 @@ static int wrapfs_setxattr(struct dentry *dentry, const char *name, const void *
 	pr_debug("wrapfs: setxattr(%pd4, \"%s\", \"%*pE\", %zu, 0x%x)\n", dentry, name, min((int)size, 48), value, size, flags);
 
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	if (!lower_dentry->d_inode->i_op->setxattr) {
+	if (!d_inode(lower_dentry)->i_op->setxattr) {
 		err = -EOPNOTSUPP;
 		goto out;
 	}
 	err = vfs_setxattr(lower_dentry, name, value, size, flags);
 	if (err)
 		goto out;
-	if (!lower_dentry->d_inode) {
+	if (!d_inode(lower_dentry)) {
 		pr_debug("wrapfs: setxattr(%pd4) warn: lower_dentry negative", dentry);
 		goto out;
 	}
-	fsstack_copy_attr_all(dentry->d_inode, lower_dentry->d_inode);
+	fsstack_copy_attr_all(d_inode(dentry), d_inode(lower_dentry));
 out:
 	return err;
 }
 
-/* For ->getxattr() the caller holds *no* inode lock on dentry->d_inode
+/* For ->getxattr() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
 static ssize_t wrapfs_getxattr(struct dentry *dentry, const char *name, void *buffer,
@@ -623,21 +623,21 @@ static ssize_t wrapfs_getxattr(struct dentry *dentry, const char *name, void *bu
 	pr_debug("wrapfs: getxattr(%pd4)\n", dentry);
 
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	if (!lower_dentry->d_inode->i_op->getxattr) {
+	if (!d_inode(lower_dentry)->i_op->getxattr) {
 		err = -EOPNOTSUPP;
 		goto out;
 	}
 	mutex_lock(&lower_dentry->d_inode->i_mutex);
-	err = lower_dentry->d_inode->i_op->getxattr(lower_dentry, name, buffer, size);
+	err = d_inode(lower_dentry)->i_op->getxattr(lower_dentry, name, buffer, size);
 	mutex_unlock(&lower_dentry->d_inode->i_mutex);
 	if (err)
 		goto out;
-	fsstack_copy_attr_atime(dentry->d_inode, lower_dentry->d_inode);
+	fsstack_copy_attr_atime(d_inode(dentry), d_inode(lower_dentry));
 out:
 	return err;
 }
 
-/* For ->listxattr() the caller holds *no* inode lock on dentry->d_inode
+/* For ->listxattr() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
 static ssize_t wrapfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
@@ -648,21 +648,21 @@ static ssize_t wrapfs_listxattr(struct dentry *dentry, char *buffer, size_t buff
 	pr_debug("wrapfs: listxattr(%pd4)\n", dentry);
 
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	if (!lower_dentry->d_inode->i_op->listxattr) {
+	if (!d_inode(lower_dentry)->i_op->listxattr) {
 		err = -EOPNOTSUPP;
 		goto out;
 	}
 	mutex_lock(&lower_dentry->d_inode->i_mutex);
-	err = lower_dentry->d_inode->i_op->listxattr(lower_dentry, buffer, buffer_size);
+	err = d_inode(lower_dentry)->i_op->listxattr(lower_dentry, buffer, buffer_size);
 	mutex_unlock(&lower_dentry->d_inode->i_mutex);
 	if (err)
 		goto out;
-	fsstack_copy_attr_atime(dentry->d_inode, lower_dentry->d_inode);
+	fsstack_copy_attr_atime(d_inode(dentry), d_inode(lower_dentry));
 out:
 	return err;
 }
 
-/* For ->removexattr() the caller holds the inode lock on dentry->d_inode.
+/* For ->removexattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
 static int wrapfs_removexattr(struct dentry *dentry, const char *name)
@@ -673,16 +673,16 @@ static int wrapfs_removexattr(struct dentry *dentry, const char *name)
 	pr_debug("wrapfs: removexattr(%pd4, \"%s\")\n", dentry, name);
 
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	if (!lower_dentry->d_inode->i_op->removexattr) {
+	if (!d_inode(lower_dentry)->i_op->removexattr) {
 		err = -EOPNOTSUPP;
 		goto out;
 	}
 	mutex_lock(&lower_dentry->d_inode->i_mutex);
-	err = lower_dentry->d_inode->i_op->removexattr(lower_dentry, name);
+	err = d_inode(lower_dentry)->i_op->removexattr(lower_dentry, name);
 	mutex_unlock(&lower_dentry->d_inode->i_mutex);
 	if (err)
 		goto out;
-	fsstack_copy_attr_all(dentry->d_inode, lower_dentry->d_inode);
+	fsstack_copy_attr_all(d_inode(dentry), d_inode(lower_dentry));
 out:
 	return err;
 }
