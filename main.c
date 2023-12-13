@@ -126,7 +126,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	sb->s_d_op = &wrapfs_dops;
 
 	/* get a new inode and allocate our root dentry */
-	inode = wrapfs_iget(sb, lower_path.dentry->d_inode);
+	inode = wrapfs_iget(sb, d_inode(lower_path.dentry));
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
 		goto out_sput;

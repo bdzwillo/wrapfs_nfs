@@ -205,13 +205,13 @@ static inline struct dentry *wrapfs_get_lower_dentry(const struct dentry *dentry
 static inline struct dentry *lock_parent(struct dentry *dentry)
 {
 	struct dentry *dir = dget_parent(dentry);
-	mutex_lock_nested(&dir->d_inode->i_mutex, I_MUTEX_PARENT);
+	inode_lock_nested(d_inode(dir), I_MUTEX_PARENT);
 	return dir;
 }
 
 static inline void unlock_dir(struct dentry *dir)
 {
-	mutex_unlock(&dir->d_inode->i_mutex);
+	inode_unlock(d_inode(dir));
 	dput(dir);
 }
 #endif	/* not _WRAPFS_H_ */

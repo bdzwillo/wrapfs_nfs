@@ -176,7 +176,7 @@ int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
 		     struct dentry *lower_dentry)
 {
 	struct inode *inode;
-	struct inode *lower_inode = lower_dentry->d_inode;
+	struct inode *lower_inode = d_inode(lower_dentry);
 
 	inode = wrapfs_get_inode(dentry, sb, lower_inode);
 	if (IS_ERR(inode)) {
@@ -197,7 +197,7 @@ int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  *
- * Fills in positive/negative dentry->d_inode on success.
+ * Fills in positive/negative d_inode(dentry) on success.
  * - returns NULL if dentry passed as param is ok.
  * - returns a new dentry, if dentry was disconnected (the caller will call dput() on it)
  * - returns ERR_PTR if an error occurred.
@@ -226,7 +226,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 
 	/* LOOKUP_ flags are defined in include/linux/namei_lookup.h
 	 */
-	pr_debug("wrapfs: lookup(%pd4, 0x%x) inode %s:%lu\n", dentry, flags, lower_dentry->d_inode ? lower_dentry->d_inode->i_sb->s_id : "NULL", lower_dentry->d_inode ? lower_dentry->d_inode->i_ino : 0);
+	pr_debug("wrapfs: lookup(%pd4, 0x%x) inode %s:%lu\n", dentry, flags, d_inode(lower_dentry) ? d_inode(lower_dentry)->i_sb->s_id : "NULL", d_inode(lower_dentry) ? d_inode(lower_dentry)->i_ino : 0);
 
 	/* dentry->d_op ops are inherited from sb->s_d_op in d_alloc() */
 	/* allocate dentry private data.  We free it in ->d_release */
@@ -265,7 +265,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	/* update parent directory's atime
 	 *
 	 * note: there's nothing to prevent losing a timeslice to preemtion in
- 	 *       the middle of evaluation of lower_dentry->d_parent->d_inode,
+	 *       the middle of evaluation of d_inode(lower_dentry->d_parent),
 	 *       having another process move lower_dentry around and have its
 	 *       (ex)parent not pinned anymore and freed on memory pressure. 
 	 *       Then we regain CPU and try to fetch ->d_inode from memory
@@ -275,7 +275,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	 *       we are guaranteed that it won't be moved anywhere until we feed it
 	 *       to d_add.  So we safely go that way to get to its underlying dentry.
 	 */
-	fsstack_copy_attr_atime(dentry->d_parent->d_inode, lower_dir_dentry->d_inode);
+	fsstack_copy_attr_atime(d_inode(dentry->d_parent), d_inode(lower_dir_dentry));
 
 	/* d_splice_alias() ensures that only one dentry is pointing to the inode,
 	 * and returns the other dentry if one is found. It performs d_add() for the dentry.
@@ -288,7 +288,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	 *       was merged into d_splice_alias(). The old d_splice_alias() would
 	 *       return EIO when an unhashed directory entry was found.
 	 */
-#if NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT
+#ifdef NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT
 	ret_dentry = d_materialise_unique(dentry, inode); /* add positive dentry */
 #else
 	ret_dentry = d_splice_alias(inode, dentry); /* add positive dentry */

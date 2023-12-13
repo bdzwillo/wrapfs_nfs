@@ -23,7 +23,7 @@ static ssize_t wrapfs_read(struct file *file, char __user *buf,
 	err = vfs_read(lower_file, buf, count, ppos);
 	/* update our inode atime upon a successful lower read */
 	if (err >= 0)
-		fsstack_copy_attr_atime(dentry->d_inode,
+		fsstack_copy_attr_atime(d_inode(dentry),
 					file_inode(lower_file));
 
 	return err;
@@ -41,9 +41,9 @@ static ssize_t wrapfs_write(struct file *file, const char __user *buf,
 	err = vfs_write(lower_file, buf, count, ppos);
 	/* update our inode times+sizes upon a successful lower write */
 	if (err >= 0) {
-		fsstack_copy_inode_size(dentry->d_inode,
+		fsstack_copy_inode_size(d_inode(dentry),
 					file_inode(lower_file));
-		fsstack_copy_attr_times(dentry->d_inode,
+		fsstack_copy_attr_times(d_inode(dentry),
 					file_inode(lower_file));
 	}
 
@@ -65,7 +65,7 @@ static int wrapfs_readdir(struct file *file, struct dir_context *ctx)
 	err = iterate_dir(lower_file, ctx);
 	file->f_pos = lower_file->f_pos;
 	if (err >= 0)		/* copy the atime */
-		fsstack_copy_attr_atime(dentry->d_inode,
+		fsstack_copy_attr_atime(d_inode(dentry),
 					file_inode(lower_file));
 	return err;
 }
@@ -321,7 +321,7 @@ static ssize_t wrapfs_aio_read(struct kiocb *iocb, const struct iovec *iov,
 	fput(lower_file);
 	/* update upper inode atime as needed */
 	if (err >= 0 || err == -EIOCBQUEUED)
-		fsstack_copy_attr_atime(file->f_path.dentry->d_inode,
+		fsstack_copy_attr_atime(d_inode(file->f_path.dentry),
 					file_inode(lower_file));
 out:
 	return err;
@@ -348,9 +348,9 @@ static ssize_t wrapfs_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	fput(lower_file);
 	/* update upper inode times/sizes as needed */
 	if (err >= 0 || err == -EIOCBQUEUED) {
-		fsstack_copy_inode_size(file->f_path.dentry->d_inode,
+		fsstack_copy_inode_size(d_inode(file->f_path.dentry),
 					file_inode(lower_file));
-		fsstack_copy_attr_times(file->f_path.dentry->d_inode,
+		fsstack_copy_attr_times(d_inode(file->f_path.dentry),
 					file_inode(lower_file));
 	}
 out:
@@ -440,10 +440,10 @@ static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 
 	lower_file = wrapfs_lower_file(file);
 
-	mutex_lock(&file->f_path.dentry->d_inode->i_mutex);
+	inode_lock(d_inode(file->f_path.dentry));
 	err = vfs_llseek(lower_file, offset, whence);
 	file->f_pos = lower_file->f_pos;
-	mutex_unlock(&file->f_path.dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(file->f_path.dentry));
 
 	return err;
 }
@@ -475,7 +475,7 @@ const struct file_operations wrapfs_main_fops = {
  * note: for an underlying nfs it is required to map the directory file ops,
  *       because nfs_opendir(inode, file) uses the inode spinlock to protect
  *       a list_add() operation, and nfs_closedir(inode, file) uses the
- *       file->f_path.dentry->d_inode spinlock to protect the list_del().
+ *       d_inode(file->f_path.dentry) spinlock to protect the list_del().
  *       (when the directory ops are not mapped, these are not the same objects)
  */
 const struct file_operations wrapfs_dir_fops = {
