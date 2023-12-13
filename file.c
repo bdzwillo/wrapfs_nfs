@@ -12,6 +12,14 @@
 
 #include "wrapfs.h"
 
+/* if f_op->read/write are not avail, vfs_read/write will call
+ * f_op->read/write_iter instead.
+ *
+ * Note:
+ * - v3.16 converted all in-kernel .read/.write calls to
+ *   .read_iter/.write_iter to stop calling ->read and ->write with
+ *   kernel pointers under set_fs.
+ */
 static ssize_t wrapfs_read(struct file *file, char __user *buf,
 			   size_t count, loff_t *ppos)
 {
@@ -297,6 +305,58 @@ static int wrapfs_fasync(int fd, struct file *file, int flag)
 	return err;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+static ssize_t wrapfs_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	int err;
+	struct file *file = iocb->ki_filp, *lower_file;
+
+	lower_file = wrapfs_lower_file(file);
+	if (!lower_file->f_op->read_iter) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	get_file(lower_file); /* prevent lower_file from being released */
+	iocb->ki_filp = lower_file;
+	err = lower_file->f_op->read_iter(iocb, iter);
+	iocb->ki_filp = file;
+	fput(lower_file);
+	/* update upper inode atime as needed */
+	if (err >= 0 || err == -EIOCBQUEUED)
+		fsstack_copy_attr_atime(d_inode(file->f_path.dentry),
+					file_inode(lower_file));
+out:
+	return err;
+}
+
+static ssize_t wrapfs_write_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	int err;
+	struct file *file = iocb->ki_filp, *lower_file;
+
+	lower_file = wrapfs_lower_file(file);
+	if (!lower_file->f_op->write_iter) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	get_file(lower_file); /* prevent lower_file from being released */
+	iocb->ki_filp = lower_file;
+	err = lower_file->f_op->write_iter(iocb, iter);
+	iocb->ki_filp = file;
+	fput(lower_file);
+	/* update upper inode times/sizes as needed */
+	if (err >= 0 || err == -EIOCBQUEUED) {
+		fsstack_copy_inode_size(d_inode(file->f_path.dentry),
+					file_inode(lower_file));
+		fsstack_copy_attr_times(d_inode(file->f_path.dentry),
+					file_inode(lower_file));
+	}
+out:
+	return err;
+}
+#else
 static ssize_t wrapfs_aio_read(struct kiocb *iocb, const struct iovec *iov,
 			       unsigned long nr_segs, loff_t pos)
 {
@@ -353,6 +413,7 @@ static ssize_t wrapfs_aio_write(struct kiocb *iocb, const struct iovec *iov,
 out:
 	return err;
 }
+#endif
 
 #if defined(WRAP_REMOTE_FILE_LOCKS)
 static inline bool is_remote_lock(struct file *filp)
@@ -447,8 +508,13 @@ static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 
 const struct file_operations wrapfs_main_fops = {
 	.llseek		= generic_file_llseek,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+	.read		= new_sync_read,
+	.write		= new_sync_write,
+#else
 	.read		= wrapfs_read,
 	.write		= wrapfs_write,
+#endif
 	.unlocked_ioctl	= wrapfs_unlocked_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= wrapfs_compat_ioctl,
@@ -459,8 +525,13 @@ const struct file_operations wrapfs_main_fops = {
 	.release	= wrapfs_file_release,
 	.fsync		= wrapfs_fsync,
 	.fasync		= wrapfs_fasync,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+	.read_iter	= wrapfs_read_iter,
+	.write_iter	= wrapfs_write_iter,
+#else
 	.aio_read	= wrapfs_aio_read,
 	.aio_write	= wrapfs_aio_write,
+#endif
 #if defined(WRAP_REMOTE_FILE_LOCKS)
 	.lock		= wrapfs_lock,
 	.flock		= wrapfs_flock,
