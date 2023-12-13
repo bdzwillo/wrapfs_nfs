@@ -530,10 +530,10 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	 * unlinked (no inode->i_sb and i_ino==0.  This happens if someone
 	 * tries to open(), unlink(), then ftruncate() a file.
 	 */
-	mutex_lock(&lower_dentry->d_inode->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	err = notify_change(lower_dentry, &lower_ia, /* note: lower_ia */
 			    NULL);
-	mutex_unlock(&lower_dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 	if (err)
 		goto out;
 
@@ -627,9 +627,9 @@ static ssize_t wrapfs_getxattr(struct dentry *dentry, const char *name, void *bu
 		err = -EOPNOTSUPP;
 		goto out;
 	}
-	mutex_lock(&lower_dentry->d_inode->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	err = d_inode(lower_dentry)->i_op->getxattr(lower_dentry, name, buffer, size);
-	mutex_unlock(&lower_dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 	if (err)
 		goto out;
 	fsstack_copy_attr_atime(d_inode(dentry), d_inode(lower_dentry));
@@ -652,9 +652,9 @@ static ssize_t wrapfs_listxattr(struct dentry *dentry, char *buffer, size_t buff
 		err = -EOPNOTSUPP;
 		goto out;
 	}
-	mutex_lock(&lower_dentry->d_inode->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	err = d_inode(lower_dentry)->i_op->listxattr(lower_dentry, buffer, buffer_size);
-	mutex_unlock(&lower_dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 	if (err)
 		goto out;
 	fsstack_copy_attr_atime(d_inode(dentry), d_inode(lower_dentry));
@@ -677,9 +677,9 @@ static int wrapfs_removexattr(struct dentry *dentry, const char *name)
 		err = -EOPNOTSUPP;
 		goto out;
 	}
-	mutex_lock(&lower_dentry->d_inode->i_mutex);
+	inode_lock(d_inode(lower_dentry));
 	err = d_inode(lower_dentry)->i_op->removexattr(lower_dentry, name);
-	mutex_unlock(&lower_dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(lower_dentry));
 	if (err)
 		goto out;
 	fsstack_copy_attr_all(d_inode(dentry), d_inode(lower_dentry));

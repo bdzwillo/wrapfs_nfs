@@ -431,10 +431,10 @@ static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 
 	lower_file = wrapfs_lower_file(file);
 
-	mutex_lock(&file->f_path.dentry->d_inode->i_mutex);
+	inode_lock(d_inode(file->f_path.dentry));
 	err = vfs_llseek(lower_file, offset, whence);
 	file->f_pos = lower_file->f_pos;
-	mutex_unlock(&file->f_path.dentry->d_inode->i_mutex);
+	inode_unlock(d_inode(file->f_path.dentry));
 
 	return err;
 }
