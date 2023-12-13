@@ -416,6 +416,53 @@ out:
 	return err;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+/* For ->get_link() the caller holds *no* inode lock on inode.
+ * (see: Documentation/filesystems/Locking)
+ */
+static const char *wrapfs_get_link(struct dentry *dentry, struct inode *inode,
+				   struct delayed_call *done)
+{
+	DEFINE_DELAYED_CALL(lower_done);
+	struct dentry *lower_dentry;
+	char *buf;
+	const char *lower_link;
+
+	if (!dentry)
+		return ERR_PTR(-ECHILD);
+
+	//pr_debug("wrapfs: getlink(%pd4)\n", dentry);
+
+	lower_dentry = wrapfs_get_lower_dentry(dentry);
+
+	/*
+	 * get link from lower file system, but use a separate
+	 * delayed_call callback.
+	 */
+	lower_link = vfs_get_link(lower_dentry, &lower_done);
+	if (IS_ERR(lower_link)) {
+		buf = ERR_CAST(lower_link);
+		goto out;
+	}
+
+	/*
+	 * we can't pass lower link up: have to make private copy and
+	 * pass that.
+	 */
+	buf = kstrdup(lower_link, GFP_KERNEL);
+	do_delayed_call(&lower_done);
+	if (!buf) {
+		buf = ERR_PTR(-ENOMEM);
+		goto out;
+	}
+
+	fsstack_copy_attr_atime(d_inode(dentry), d_inode(lower_dentry));
+
+	set_delayed_call(done, kfree_link, buf);
+out:
+	return buf;
+}
+#else
 /* For ->follow_link() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
@@ -447,6 +494,7 @@ out:
 	nd_set_link(nd, buf);
 	return NULL;
 }
+#endif
 
 /* For ->permission() the caller holds *no* inode lock on d_inode(dentry)
  * Also ->permission() may not block if called in rcu-walk mode (mask & MAY_NOT_BLOCK).
@@ -699,10 +747,14 @@ out:
 const struct inode_operations wrapfs_symlink_iops = {
 	.readlink	= wrapfs_readlink,
 	.permission	= wrapfs_permission,
-	.follow_link	= wrapfs_follow_link,
 	.setattr	= wrapfs_setattr,
 	.getattr	= wrapfs_getattr,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+	.get_link	= wrapfs_get_link,
+#else
+	.follow_link	= wrapfs_follow_link,
 	.put_link	= kfree_put_link,
+#endif
 	.setxattr	= wrapfs_setxattr,
 	.getxattr	= wrapfs_getxattr,
 	.listxattr	= wrapfs_listxattr,
