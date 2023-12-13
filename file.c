@@ -239,7 +239,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 		 * mounted on top, because filp_close() does not see the i_flock
 		 * of the lower_file. 
 		 *
-		 * So the unlock the lower posix locks is triggerd here with
+		 * So the unlock for the lower posix locks is triggerd here with
 		 * the matching owner, when the last reference to the file is
 		 * removed.
 		 */
@@ -248,7 +248,20 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 			int o = 0;
 			struct file_lock *fl;
 			fl_owner_t owner = current->files; // default owner of non-OFD posix locks
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
+			struct file_lock_context *ctx = smp_load_acquire(&lower_inode->i_flctx);
+			if (ctx && !list_empty_careful(&ctx->flc_posix)) {
+				spin_lock(&ctx->flc_lock);
+				list_for_each_entry(fl, &ctx->flc_posix, fl_list) {
+					if (fl->fl_file == lower_file) {
+						owner = fl->fl_owner;
+						o++;
+					}
+					n++;
+				}
+				spin_unlock(&ctx->flc_lock);
+			}
+#else
 			spin_lock(&inode_lower->i_lock);
 			for (fl = inode_lower->i_flock; fl != NULL; fl = fl->fl_next) {
 				if (fl->fl_flags & FL_POSIX) {
@@ -260,6 +273,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 				n++;
 			}
 			spin_unlock(&inode_lower->i_lock);
+#endif
 			if (o) {
 				locks_remove_posix(lower_file, owner);
 				pr_debug("wrapfs: file_release(%pD4) remove posix lock (%s:%lu) nlocks %d owned %d\n", file, inode_lower->i_sb->s_id, inode_lower->i_ino, n, o);
