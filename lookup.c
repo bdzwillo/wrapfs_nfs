@@ -288,7 +288,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	 *       was merged into d_splice_alias(). The old d_splice_alias() would
 	 *       return EIO when an unhashed directory entry was found.
 	 */
-#if NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT
+#ifdef NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT
 	ret_dentry = d_materialise_unique(dentry, inode); /* add positive dentry */
 #else
 	ret_dentry = d_splice_alias(inode, dentry); /* add positive dentry */
