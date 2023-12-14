@@ -248,13 +248,17 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 		 * the matching owner, when the last reference to the file is
 		 * removed.
 		 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
+		if (inode_lower->i_flctx) {
+#else
 		if (inode_lower->i_flock) {
+#endif
 			int n = 0;
 			int o = 0;
 			struct file_lock *fl;
 			fl_owner_t owner = current->files; // default owner of non-OFD posix locks
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
-			struct file_lock_context *ctx = smp_load_acquire(&lower_inode->i_flctx);
+			struct file_lock_context *ctx = smp_load_acquire(&inode_lower->i_flctx);
 			if (ctx && !list_empty_careful(&ctx->flc_posix)) {
 				spin_lock(&ctx->flc_lock);
 				list_for_each_entry(fl, &ctx->flc_posix, fl_list) {
