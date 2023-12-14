@@ -19,6 +19,7 @@
  * - v3.16 converted all in-kernel .read/.write calls to
  *   .read_iter/.write_iter to stop calling ->read and ->write with
  *   kernel pointers under set_fs.
+ * - v4.1 removed also the new_sync_read/write mapper calls.
  */
 static ssize_t wrapfs_read(struct file *file, char __user *buf,
 			   size_t count, loff_t *ppos)
@@ -522,12 +523,14 @@ static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 
 const struct file_operations wrapfs_main_fops = {
 	.llseek		= generic_file_llseek,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
 	.read		= new_sync_read,
 	.write		= new_sync_write,
 #else
 	.read		= wrapfs_read,
 	.write		= wrapfs_write,
+#endif
 #endif
 	.unlocked_ioctl	= wrapfs_unlocked_ioctl,
 #ifdef CONFIG_COMPAT
