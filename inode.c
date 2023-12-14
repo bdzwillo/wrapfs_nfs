@@ -390,6 +390,7 @@ out:
 	return err;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 /* For ->readlink() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
  */
@@ -415,6 +416,7 @@ static int wrapfs_readlink(struct dentry *dentry, char __user *buf, int bufsiz)
 out:
 	return err;
 }
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
 /* For ->get_link() the caller holds *no* inode lock on inode.
@@ -866,7 +868,9 @@ out:
 #endif
 
 const struct inode_operations wrapfs_symlink_iops = {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 	.readlink	= wrapfs_readlink,
+#endif
 	.permission	= wrapfs_permission,
 	.setattr	= wrapfs_setattr,
 	.getattr	= wrapfs_getattr,
