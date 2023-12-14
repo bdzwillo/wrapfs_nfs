@@ -609,24 +609,23 @@ out:
 	return err;
 }
 
-/* For ->getattr() the caller holds *no* inode lock on d_inode(dentry)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+/* For ->getattr() the caller holds *no* inode lock on d_inode(path->dentry)
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
-			  struct kstat *stat)
+static int wrapfs_getattr(const struct path *path, struct kstat *stat,
+                          u32 request_mask, unsigned int flags)
 {
 	int err = 0;
 	struct kstat lower_stat;
-	struct dentry *lower_dentry;
-	struct vfsmount *lower_mnt;
-
-	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	lower_mnt    = wrapfs_get_lower_path(dentry)->mnt;
+	struct dentry *dentry = path->dentry;
+	struct path *lower_path = wrapfs_get_lower_path(dentry);
+	struct dentry *lower_dentry = wrapfs_get_lower_dentry(dentry);
 
 	if (!d_inode(lower_dentry)->i_op->getattr)
 		goto out;
-	err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
 
+	err = d_inode(lower_dentry)->i_op->getattr(lower_path, &lower_stat, request_mask, flags);
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
 	if (err)
@@ -644,6 +643,42 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 out:
 	return err;
 }
+#else
+/* For ->getattr() the caller holds *no* inode lock on d_inode(dentry)
+ * (see: Documentation/filesystems/Locking)
+ */
+static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
+			  struct kstat *stat)
+{
+	int err = 0;
+	struct kstat lower_stat;
+	struct dentry *lower_dentry;
+	struct vfsmount *lower_mnt;
+
+	lower_dentry = wrapfs_get_lower_dentry(dentry);
+	lower_mnt    = wrapfs_get_lower_path(dentry)->mnt;
+
+	if (!d_inode(lower_dentry)->i_op->getattr)
+		goto out;
+	err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
+	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
+
+	if (err)
+		goto out;
+	fsstack_copy_attr_all(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
+	if (lower_dentry->d_flags & DCACHE_OP_REVALIDATE) {
+		/* on top of nfs or other remote filesystem i_size/i_blocks
+		 * might have changed after the last revalidate.
+		 */
+		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
+	} else {
+		stat->blocks = wrapfs_lower_inode(d_inode(dentry))->i_blocks;
+	}
+	generic_fillattr(d_inode(dentry), stat);
+out:
+	return err;
+}
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
 /* For ->setxattr() the caller holds the inode lock on inode.
