@@ -641,6 +641,58 @@ out:
 	return err;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+/* For ->setxattr() the caller holds the inode lock on inode.
+ * (see: Documentation/filesystems/Locking)
+ */
+static int wrapfs_setxattr(struct dentry *dentry, struct inode *inode, const char *name,
+		const void *value, size_t size, int flags)
+{
+	int err; struct dentry *lower_dentry;
+
+	pr_debug("wrapfs: setxattr(%pd4, \"%s\", \"%*pE\", %zu, 0x%x)\n", dentry, name, min((int)size, 48), value, size, flags);
+
+	lower_dentry = wrapfs_get_lower_dentry(dentry);
+	if (!(d_inode(lower_dentry)->i_opflags & IOP_XATTR)) {
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+	err = vfs_setxattr(lower_dentry, name, value, size, flags);
+	if (!err && inode) {
+		fsstack_copy_attr_all(inode, d_inode(lower_dentry));
+	}
+out:
+	return err;
+}
+
+/* For ->getxattr() the caller holds *no* inode lock on inode.
+ * (see: Documentation/filesystems/Locking)
+ */
+static ssize_t wrapfs_getxattr(struct dentry *dentry, struct inode *inode,
+		const char *name, void *buffer, size_t size)
+{
+	int err;
+	struct dentry *lower_dentry;
+	struct inode *lower_inode;
+
+	pr_debug("wrapfs: getxattr(%pd4)\n", dentry);
+
+	lower_dentry = wrapfs_get_lower_dentry(dentry);
+	lower_inode = wrapfs_lower_inode(inode);
+	if (!(d_inode(lower_dentry)->i_opflags & IOP_XATTR)) {
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+	inode_lock(lower_inode);
+	err = __vfs_getxattr(lower_dentry, lower_inode, name, buffer, size);
+	inode_unlock(lower_inode);
+	if (!err && inode) {
+		fsstack_copy_attr_atime(inode, lower_inode);
+	}
+out:
+	return err;
+}
+#else
 /* For ->setxattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
@@ -693,6 +745,7 @@ static ssize_t wrapfs_getxattr(struct dentry *dentry, const char *name, void *bu
 out:
 	return err;
 }
+#endif
 
 /* For ->listxattr() the caller holds *no* inode lock on d_inode(dentry)
  * (see: Documentation/filesystems/Locking)
@@ -719,6 +772,34 @@ out:
 	return err;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+/* For ->removexattr() the caller holds the inode lock on inode.
+ * (see: Documentation/filesystems/Locking)
+ */
+static int wrapfs_removexattr(struct dentry *dentry, struct inode *inode, const char *name)
+{
+	int err;
+	struct dentry *lower_dentry;
+	struct inode *lower_inode;
+
+	pr_debug("wrapfs: removexattr(%pd4, \"%s\")\n", dentry, name);
+
+	lower_dentry = wrapfs_get_lower_dentry(dentry);
+	lower_inode = wrapfs_lower_inode(inode);
+	if (!(lower_inode->i_opflags & IOP_XATTR)) {
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+	inode_lock(lower_inode);
+	err = __vfs_removexattr(lower_dentry, name);
+	inode_unlock(lower_inode);
+	if (!err && inode) {
+		fsstack_copy_attr_all(inode, lower_inode);
+	}
+out:
+	return err;
+}
+#else
 /* For ->removexattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
@@ -743,6 +824,7 @@ static int wrapfs_removexattr(struct dentry *dentry, const char *name)
 out:
 	return err;
 }
+#endif
 
 const struct inode_operations wrapfs_symlink_iops = {
 	.readlink	= wrapfs_readlink,
@@ -755,10 +837,12 @@ const struct inode_operations wrapfs_symlink_iops = {
 	.follow_link	= wrapfs_follow_link,
 	.put_link	= kfree_put_link,
 #endif
+	.listxattr	= wrapfs_listxattr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
 	.setxattr	= wrapfs_setxattr,
 	.getxattr	= wrapfs_getxattr,
-	.listxattr	= wrapfs_listxattr,
 	.removexattr	= wrapfs_removexattr,
+#endif
 };
 
 const struct inode_operations wrapfs_dir_iops = {
@@ -774,18 +858,54 @@ const struct inode_operations wrapfs_dir_iops = {
 	.permission	= wrapfs_permission,
 	.setattr	= wrapfs_setattr,
 	.getattr	= wrapfs_getattr,
+	.listxattr	= wrapfs_listxattr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
 	.setxattr	= wrapfs_setxattr,
 	.getxattr	= wrapfs_getxattr,
-	.listxattr	= wrapfs_listxattr,
 	.removexattr	= wrapfs_removexattr,
+#endif
 };
 
 const struct inode_operations wrapfs_main_iops = {
 	.permission	= wrapfs_permission,
 	.setattr	= wrapfs_setattr,
 	.getattr	= wrapfs_getattr,
+	.listxattr	= wrapfs_listxattr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
 	.setxattr	= wrapfs_setxattr,
 	.getxattr	= wrapfs_getxattr,
-	.listxattr	= wrapfs_listxattr,
 	.removexattr	= wrapfs_removexattr,
+#endif
 };
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+static int wrapfs_xattr_get(const struct xattr_handler *handler,
+			    struct dentry *dentry, struct inode *inode,
+			    const char *name, void *buffer, size_t size)
+{
+	return wrapfs_getxattr(dentry, inode, name, buffer, size);
+}
+
+static int wrapfs_xattr_set(const struct xattr_handler *handler,
+			    struct dentry *dentry, struct inode *inode,
+			    const char *name, const void *value, size_t size,
+			    int flags)
+{
+	if (value)
+		return wrapfs_setxattr(dentry, inode, name, value, size, flags);
+
+	BUG_ON(flags != XATTR_REPLACE);
+	return wrapfs_removexattr(dentry, inode, name);
+}
+
+const struct xattr_handler wrapfs_xattr_handler = {
+	.prefix = "",		/* match anything */
+	.get = wrapfs_xattr_get,
+	.set = wrapfs_xattr_set,
+};
+
+const struct xattr_handler *wrapfs_xattr_handlers[] = {
+	&wrapfs_xattr_handler,
+	NULL
+};
+#endif
