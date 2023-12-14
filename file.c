@@ -435,10 +435,15 @@ out:
 #endif
 
 #if defined(WRAP_REMOTE_FILE_LOCKS)
+/* wrapfs/overlayfs files will automatically get the correct locks
+ * since linux-4.19 (backported to rh8-4.18)
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 static inline bool is_remote_lock(struct file *filp)
 {
         return likely(!(filp->f_path.dentry->d_sb->s_flags & MS_NOREMOTELOCK));
 }
+#endif
 
 static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 {
@@ -456,7 +461,11 @@ static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 	lower_file = wrapfs_lower_file(filp);
 	get_file(lower_file); /* prevent lower_file from being released */
 	fl->fl_file = lower_file;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 	if (lower_file->f_op && lower_file->f_op->lock && is_remote_lock(lower_file)) {
+#else
+	if (lower_file->f_op && lower_file->f_op->lock) {
+#endif
 		err = lower_file->f_op->lock(lower_file, cmd, fl);
 	} else {
 		err = posix_lock_file(lower_file, fl, NULL);
@@ -482,7 +491,11 @@ static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
 	lower_file = wrapfs_lower_file(filp);
 	get_file(lower_file); /* prevent lower_file from being released */
 	fl->fl_file = lower_file;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 	if (lower_file->f_op && lower_file->f_op->flock && is_remote_lock(lower_file)) {
+#else
+	if (lower_file->f_op && lower_file->f_op->flock) {
+#endif
 		err = lower_file->f_op->flock(lower_file, cmd, fl);
 	} else {
 		err = locks_lock_file_wait(lower_file, fl);
