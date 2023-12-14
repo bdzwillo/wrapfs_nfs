@@ -20,7 +20,10 @@
  *   .read_iter/.write_iter to stop calling ->read and ->write with
  *   kernel pointers under set_fs.
  * - v4.1 removed also the new_sync_read/write mapper calls.
+ * - v4.14 unexported the vfs_read/write calls. (kernel_read/write are no
+ *   substitute, since they take kernel pointers instead of user-pointers)
  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
 static ssize_t wrapfs_read(struct file *file, char __user *buf,
 			   size_t count, loff_t *ppos)
 {
@@ -58,6 +61,7 @@ static ssize_t wrapfs_write(struct file *file, const char __user *buf,
 
 	return err;
 }
+#endif
 
 /* For ->iterate() the caller holds the file->f_inode lock.
  * (see: Documentation/filesystems/locking)
