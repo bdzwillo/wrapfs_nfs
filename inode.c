@@ -546,7 +546,11 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	 * this user can change the lower inode: that should happen when
 	 * calling notify_change on the lower inode.
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
+	err = setattr_prepare(dentry, ia);
+#else
 	err = inode_change_ok(inode, ia);
+#endif
 	if (err)
 		goto out;
 
