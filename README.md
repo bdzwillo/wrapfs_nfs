@@ -4,16 +4,18 @@ This wrapfs version is based on the original wrapfs from https://wrapfs.filesyst
 and supports operation as a loopback filesystem on top of an underlying nfs mount.
 
 - this was implemented for a project with the requirement for a loadable vfs-module 
-  running on centos/redhat-7 servers.
+  running on centos/redhat-7 & 8 servers.
 
 - it was choosen to base the vfs on wrapfs, since there is no simple in-tree
   implementation of a loopback filesystem, and some other vfs implementations
   like ecryptfs and overlayfs seem to originate from wrapfs.
 
 - since the original wrapfs does only support the vanilla kernel, it needed some
-  adjustments to compile on centos. For the centos-7.8 kernel the best match was
-  wrapfs-v3.15.10-96 from http://download.filesystems.org/wrapfs/patches/. The
-  current version is compatible to the centos-7.9 linux-3.10.0-1160.36.2.el7 kernel.
+  adjustments to compile on centos. For the initial centos-7.8 version, the best
+  match was wrapfs-v3.15.10-96 from http://download.filesystems.org/wrapfs/patches/.
+
+- the current version is compatible to the centos-7.9 3.10.0-1160.95.1.el7
+  kernel, and on centos-8.8 to the linux-4.18.0-477.27.1.el8 kernel.
 
 - this wrapfs version fixes some bugs when mounted on top of a remote filesystem.
   It also includes some simplifications for the lookup-, locking- & mmap-code based 
