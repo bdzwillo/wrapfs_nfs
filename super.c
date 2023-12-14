@@ -107,7 +107,11 @@ static struct inode *wrapfs_alloc_inode(struct super_block *sb)
 	/* memset everything up to the inode to 0 */
 	memset(i, 0, offsetof(struct wrapfs_inode_info, vfs_inode));
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
+	atomic64_set(&i->vfs_inode.i_version, 1);
+#else
 	i->vfs_inode.i_version = 1;
+#endif
 	return &i->vfs_inode;
 }
 
