@@ -12,6 +12,18 @@
 
 #include "wrapfs.h"
 
+/* if f_op->read/write are not avail, vfs_read/write will call
+ * f_op->read/write_iter instead.
+ *
+ * Note:
+ * - v3.16 converted all in-kernel .read/.write calls to
+ *   .read_iter/.write_iter to stop calling ->read and ->write with
+ *   kernel pointers under set_fs.
+ * - v4.1 removed also the new_sync_read/write mapper calls.
+ * - v4.14 unexported the vfs_read/write calls. (kernel_read/write are no
+ *   substitute, since they take kernel pointers instead of user-pointers)
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
 static ssize_t wrapfs_read(struct file *file, char __user *buf,
 			   size_t count, loff_t *ppos)
 {
@@ -49,6 +61,7 @@ static ssize_t wrapfs_write(struct file *file, const char __user *buf,
 
 	return err;
 }
+#endif
 
 /* For ->iterate() the caller holds the file->f_inode lock.
  * (see: Documentation/filesystems/locking)
@@ -190,7 +203,9 @@ static int wrapfs_open(struct inode *inode, struct file *file)
 		}
 	} else {
 		wrapfs_set_lower_file(file, lower_file);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0)
 		file->f_mode |= FMODE_KABI_ITERATE;
+#endif
 	}
 
 	if (err)
@@ -238,16 +253,33 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 		 * mounted on top, because filp_close() does not see the i_flock
 		 * of the lower_file. 
 		 *
-		 * So the unlock the lower posix locks is triggerd here with
+		 * So the unlock for the lower posix locks is triggerd here with
 		 * the matching owner, when the last reference to the file is
 		 * removed.
 		 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
+		if (inode_lower->i_flctx) {
+#else
 		if (inode_lower->i_flock) {
+#endif
 			int n = 0;
 			int o = 0;
 			struct file_lock *fl;
 			fl_owner_t owner = current->files; // default owner of non-OFD posix locks
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
+			struct file_lock_context *ctx = smp_load_acquire(&inode_lower->i_flctx);
+			if (ctx && !list_empty_careful(&ctx->flc_posix)) {
+				spin_lock(&ctx->flc_lock);
+				list_for_each_entry(fl, &ctx->flc_posix, fl_list) {
+					if (fl->fl_file == lower_file) {
+						owner = fl->fl_owner;
+						o++;
+					}
+					n++;
+				}
+				spin_unlock(&ctx->flc_lock);
+			}
+#else
 			spin_lock(&inode_lower->i_lock);
 			for (fl = inode_lower->i_flock; fl != NULL; fl = fl->fl_next) {
 				if (fl->fl_flags & FL_POSIX) {
@@ -259,6 +291,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 				n++;
 			}
 			spin_unlock(&inode_lower->i_lock);
+#endif
 			if (o) {
 				locks_remove_posix(lower_file, owner);
 				pr_debug("wrapfs: file_release(%pD4) remove posix lock (%s:%lu) nlocks %d owned %d\n", file, inode_lower->i_sb->s_id, inode_lower->i_ino, n, o);
@@ -279,7 +312,11 @@ static int wrapfs_fsync(struct file *file, loff_t start, loff_t end,
 	int err;
 	struct file *lower_file;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+	err = __generic_file_fsync(file, start, end, datasync);
+#else
 	err = generic_file_fsync(file, start, end, datasync);
+#endif
 	if (err)
 		goto out;
 	lower_file = wrapfs_lower_file(file);
@@ -300,6 +337,58 @@ static int wrapfs_fasync(int fd, struct file *file, int flag)
 	return err;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+static ssize_t wrapfs_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	int err;
+	struct file *file = iocb->ki_filp, *lower_file;
+
+	lower_file = wrapfs_lower_file(file);
+	if (!lower_file->f_op->read_iter) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	get_file(lower_file); /* prevent lower_file from being released */
+	iocb->ki_filp = lower_file;
+	err = lower_file->f_op->read_iter(iocb, iter);
+	iocb->ki_filp = file;
+	fput(lower_file);
+	/* update upper inode atime as needed */
+	if (err >= 0 || err == -EIOCBQUEUED)
+		fsstack_copy_attr_atime(d_inode(file->f_path.dentry),
+					file_inode(lower_file));
+out:
+	return err;
+}
+
+static ssize_t wrapfs_write_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	int err;
+	struct file *file = iocb->ki_filp, *lower_file;
+
+	lower_file = wrapfs_lower_file(file);
+	if (!lower_file->f_op->write_iter) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	get_file(lower_file); /* prevent lower_file from being released */
+	iocb->ki_filp = lower_file;
+	err = lower_file->f_op->write_iter(iocb, iter);
+	iocb->ki_filp = file;
+	fput(lower_file);
+	/* update upper inode times/sizes as needed */
+	if (err >= 0 || err == -EIOCBQUEUED) {
+		fsstack_copy_inode_size(d_inode(file->f_path.dentry),
+					file_inode(lower_file));
+		fsstack_copy_attr_times(d_inode(file->f_path.dentry),
+					file_inode(lower_file));
+	}
+out:
+	return err;
+}
+#else
 static ssize_t wrapfs_aio_read(struct kiocb *iocb, const struct iovec *iov,
 			       unsigned long nr_segs, loff_t pos)
 {
@@ -356,12 +445,18 @@ static ssize_t wrapfs_aio_write(struct kiocb *iocb, const struct iovec *iov,
 out:
 	return err;
 }
+#endif
 
 #if defined(WRAP_REMOTE_FILE_LOCKS)
+/* wrapfs/overlayfs files will automatically get the correct locks
+ * since linux-4.19 (backported to rh8-4.18)
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 static inline bool is_remote_lock(struct file *filp)
 {
         return likely(!(filp->f_path.dentry->d_sb->s_flags & MS_NOREMOTELOCK));
 }
+#endif
 
 static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 {
@@ -379,7 +474,11 @@ static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 	lower_file = wrapfs_lower_file(filp);
 	get_file(lower_file); /* prevent lower_file from being released */
 	fl->fl_file = lower_file;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 	if (lower_file->f_op && lower_file->f_op->lock && is_remote_lock(lower_file)) {
+#else
+	if (lower_file->f_op && lower_file->f_op->lock) {
+#endif
 		err = lower_file->f_op->lock(lower_file, cmd, fl);
 	} else {
 		err = posix_lock_file(lower_file, fl, NULL);
@@ -405,7 +504,11 @@ static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
 	lower_file = wrapfs_lower_file(filp);
 	get_file(lower_file); /* prevent lower_file from being released */
 	fl->fl_file = lower_file;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 	if (lower_file->f_op && lower_file->f_op->flock && is_remote_lock(lower_file)) {
+#else
+	if (lower_file->f_op && lower_file->f_op->flock) {
+#endif
 		err = lower_file->f_op->flock(lower_file, cmd, fl);
 	} else {
 		err = locks_lock_file_wait(lower_file, fl);
@@ -450,8 +553,15 @@ static loff_t wrapfs_file_llseek(struct file *file, loff_t offset, int whence)
 
 const struct file_operations wrapfs_main_fops = {
 	.llseek		= generic_file_llseek,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+	.read		= new_sync_read,
+	.write		= new_sync_write,
+#else
 	.read		= wrapfs_read,
 	.write		= wrapfs_write,
+#endif
+#endif
 	.unlocked_ioctl	= wrapfs_unlocked_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= wrapfs_compat_ioctl,
@@ -462,8 +572,13 @@ const struct file_operations wrapfs_main_fops = {
 	.release	= wrapfs_file_release,
 	.fsync		= wrapfs_fsync,
 	.fasync		= wrapfs_fasync,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+	.read_iter	= wrapfs_read_iter,
+	.write_iter	= wrapfs_write_iter,
+#else
 	.aio_read	= wrapfs_aio_read,
 	.aio_write	= wrapfs_aio_write,
+#endif
 #if defined(WRAP_REMOTE_FILE_LOCKS)
 	.lock		= wrapfs_lock,
 	.flock		= wrapfs_flock,

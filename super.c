@@ -62,7 +62,11 @@ static int wrapfs_remount_fs(struct super_block *sb, int *flags, char *options)
 	 * can safely accept a few flags (RDONLY, MANDLOCK), and honor
 	 * SILENT, but anything else left over is an error.
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+	if ((*flags & ~(SB_RDONLY | SB_MANDLOCK | SB_SILENT)) != 0) {
+#else
 	if ((*flags & ~(MS_RDONLY | MS_MANDLOCK | MS_SILENT)) != 0) {
+#endif
 		printk(KERN_ERR
 		       "wrapfs: remount flags 0x%x unsupported\n", *flags);
 		err = -EINVAL;
@@ -103,7 +107,11 @@ static struct inode *wrapfs_alloc_inode(struct super_block *sb)
 	/* memset everything up to the inode to 0 */
 	memset(i, 0, offsetof(struct wrapfs_inode_info, vfs_inode));
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
+	atomic64_set(&i->vfs_inode.i_version, 1);
+#else
 	i->vfs_inode.i_version = 1;
+#endif
 	return &i->vfs_inode;
 }
 
@@ -153,7 +161,6 @@ static void wrapfs_umount_begin(struct super_block *sb)
 		lower_sb->s_op->umount_begin(lower_sb);
 }
 
-#if defined (WRAPFS_INTERCEPT_INODE_MODIFY)
 /* Prints the mount options for a given superblock.
  * Returns zero; does not fail.
  */
@@ -163,18 +170,19 @@ static int wrapfs_show_options(struct seq_file *m, struct dentry *dentry)
 	struct wrapfs_sb_info *spd;
 
 	spd = WRAPFS_SB(sb);
-	if (!spd)
+	if (!spd) {
 		return 0;
-
+	}
+#if defined (WRAPFS_INTERCEPT_INODE_MODIFY)
 	if (spd->rdonly) {
 		seq_puts(m, ",block");
 	}
 	if (spd->single_uid) {
 		seq_printf(m, ",uid=%u", spd->single_uid);
 	}
+#endif
 	return 0;
 }
-#endif
 
 const struct super_operations wrapfs_sops = {
 	.put_super	= wrapfs_put_super,
@@ -182,11 +190,7 @@ const struct super_operations wrapfs_sops = {
 	.remount_fs	= wrapfs_remount_fs,
 	.evict_inode	= wrapfs_evict_inode,
 	.umount_begin	= wrapfs_umount_begin,
-#if defined (WRAPFS_INTERCEPT_INODE_MODIFY)
 	.show_options	= wrapfs_show_options,
-#else
-	.show_options	= generic_show_options,
-#endif
 	.alloc_inode	= wrapfs_alloc_inode,
 	.destroy_inode	= wrapfs_destroy_inode,
 	.drop_inode	= generic_delete_inode,
