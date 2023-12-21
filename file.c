@@ -259,6 +259,40 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 			fl_owner_t owner = current->files; // default owner of non-OFD posix locks
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
 			struct file_lock_context *ctx = smp_load_acquire(&inode_lower->i_flctx);
+			if (ctx && !list_empty_careful(&ctx->flc_flock)) {
+				spin_lock(&ctx->flc_lock);
+				list_for_each_entry(fl, &ctx->flc_flock, fl_list) {
+					if (fl->fl_file == lower_file) {
+						owner = fl->fl_owner;
+						o++;
+					}
+					n++;
+				}
+				spin_unlock(&ctx->flc_lock);
+			}
+			if (o) {
+				/* see fs/locks.c:locks_remove_flock()
+				 */
+				struct file_lock fl = {
+			                .fl_owner = owner,
+			                .fl_pid = current->tgid,
+			                .fl_file = lower_file,
+			                .fl_flags = FL_FLOCK | FL_CLOSE,
+			                .fl_type = F_UNLCK,
+			                .fl_end = OFFSET_MAX,
+			        };
+				if (lower_file->f_op->flock) {
+			                lower_file->f_op->flock(lower_file, F_SETLKW, &fl);
+			        } else {
+			                locks_lock_inode_wait(inode_lower, &fl);
+				}
+				if (fl.fl_ops && fl.fl_ops->fl_release_private) {
+					fl.fl_ops->fl_release_private(&fl);
+				}
+				pr_debug("wrapfs: file_release(%pD4) remove flock (%s:%lu) nlocks %d owned %d\n", file, inode_lower->i_sb->s_id, inode_lower->i_ino, n, o);
+				o = 0;
+				n = 0;
+			}
 			if (ctx && !list_empty_careful(&ctx->flc_posix)) {
 				spin_lock(&ctx->flc_lock);
 				list_for_each_entry(fl, &ctx->flc_posix, fl_list) {
