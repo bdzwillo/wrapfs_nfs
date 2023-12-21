@@ -39,12 +39,6 @@
 #define WRAPFS_SUPER_MAGIC     0xb550ca10
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0)
-#if !defined(RHEL_MAJOR) || RHEL_MAJOR <= 7
-#define NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT 1
-#endif
-#endif
-
 /* wrapfs root inode number */
 #define WRAPFS_ROOT_INO     1
 
@@ -61,9 +55,7 @@ extern const struct super_operations wrapfs_sops;
 extern const struct dentry_operations wrapfs_dops;
 extern const struct address_space_operations wrapfs_aops, wrapfs_dummy_aops;
 extern const struct export_operations wrapfs_export_ops;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
 extern const struct xattr_handler *wrapfs_xattr_handlers[];
-#endif
 
 extern int wrapfs_init_inode_cache(void);
 extern void wrapfs_destroy_inode_cache(void);

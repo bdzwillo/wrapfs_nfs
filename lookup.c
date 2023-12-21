@@ -100,11 +100,8 @@ struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 	inode->i_ino = lower_inode->i_ino;
 	wrapfs_set_lower_inode(inode, lower_inode);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
 	atomic64_inc(&inode->i_version);
-#else
-	inode->i_version++;
-#endif
+
 	/* use different set of inode ops for symlinks & directories */
 	if (S_ISDIR(lower_inode->i_mode))
 		inode->i_op = &wrapfs_dir_iops;
@@ -291,11 +288,7 @@ struct dentry *wrapfs_lookup(struct inode *dir, struct dentry *dentry,
 	 *       was merged into d_splice_alias(). The old d_splice_alias() would
 	 *       return EIO when an unhashed directory entry was found.
 	 */
-#ifdef NO_D_SPLICE_ALIAS_REMOTE_RENAME_SUPPORT
-	ret_dentry = d_materialise_unique(dentry, inode); /* add positive dentry */
-#else
 	ret_dentry = d_splice_alias(inode, dentry); /* add positive dentry */
-#endif
 	if (ret_dentry) {
 		if (IS_ERR(ret_dentry)) {
 			pr_debug("wrapfs: lookup(%pd4) warn: splice error %d\n", dentry, (int)PTR_ERR(ret_dentry));
