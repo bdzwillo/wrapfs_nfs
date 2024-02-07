@@ -127,8 +127,13 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 		sb->s_flags |= MS_NOREMOTELOCK; /* set this to use local file locks instead of nfs locks */
 	}
 #endif
-	sb->s_d_op = &wrapfs_dops;
-
+	/* announce revalidate funtions only if supported by underlying fs
+	 */
+	if (lower_path.dentry->d_flags & (DCACHE_OP_REVALIDATE|DCACHE_OP_WEAK_REVALIDATE)) {
+		sb->s_d_op = &wrapfs_dops;
+	} else {
+		sb->s_d_op = &wrapfs_norev_dops;
+	}
 	/* get a new inode and allocate our root dentry */
 	inode = wrapfs_iget(sb, d_inode(lower_path.dentry));
 	if (IS_ERR(inode)) {

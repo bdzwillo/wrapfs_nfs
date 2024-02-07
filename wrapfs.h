@@ -45,6 +45,10 @@
 #endif
 #endif
 
+#if defined(RHEL_MAJOR) && RHEL_MAJOR == 7
+#define USE_RH7_IOPS_WRAPPER 1
+#endif
+
 /* wrapfs root inode number */
 #define WRAPFS_ROOT_INO     1
 
@@ -54,11 +58,17 @@
 /* operations vectors defined in specific files */
 extern const struct file_operations wrapfs_main_fops;
 extern const struct file_operations wrapfs_dir_fops;
+#ifdef USE_RH7_IOPS_WRAPPER
+extern const struct inode_operations_wrapper wrapfs_main_iops;
+extern const struct inode_operations_wrapper wrapfs_dir_iops;
+#else
 extern const struct inode_operations wrapfs_main_iops;
 extern const struct inode_operations wrapfs_dir_iops;
+#endif
 extern const struct inode_operations wrapfs_symlink_iops;
 extern const struct super_operations wrapfs_sops;
 extern const struct dentry_operations wrapfs_dops;
+extern const struct dentry_operations wrapfs_norev_dops;
 extern const struct address_space_operations wrapfs_aops, wrapfs_dummy_aops;
 extern const struct export_operations wrapfs_export_ops;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
