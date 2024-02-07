@@ -105,14 +105,31 @@ struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 #else
 	inode->i_version++;
 #endif
-	/* use different set of inode ops for symlinks & directories */
-	if (S_ISDIR(lower_inode->i_mode))
+	/* use different set of inode ops for symlinks & directories
+	 *
+	 * Note: redhat7 uses an inode_operations_wrapper struct to backport
+	 *       some inode operations from newer kernels. The presence of this
+	 *       extended struct is indicated by 'inode->i_flags & S_IOPS_WRAPPER'.
+	 *
+	 *       When the S_IOPS_WRAPPER flag is not aligned with the layout
+	 *       of the iops struct, the vfs_rename-call will read an invalid
+	 *       function pointer and crash the kernel.
+	 */
+	if (S_ISDIR(lower_inode->i_mode)) {
+#ifdef USE_RH7_IOPS_WRAPPER
+		inode->i_op = &wrapfs_dir_iops.ops;
+#else
 		inode->i_op = &wrapfs_dir_iops;
-	else if (S_ISLNK(lower_inode->i_mode))
+#endif
+	} else if (S_ISLNK(lower_inode->i_mode)) {
 		inode->i_op = &wrapfs_symlink_iops;
-	else
+	} else {
+#ifdef USE_RH7_IOPS_WRAPPER
+		inode->i_op = &wrapfs_main_iops.ops;
+#else
 		inode->i_op = &wrapfs_main_iops;
-
+#endif
+	}
 	/* use different set of file ops for directories */
 	if (S_ISDIR(lower_inode->i_mode)) {
 		inode->i_fop = &wrapfs_dir_fops;
