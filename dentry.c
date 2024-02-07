@@ -84,3 +84,7 @@ const struct dentry_operations wrapfs_dops = {
 	.d_release	= wrapfs_d_release,
 	.d_weak_revalidate = wrapfs_d_weak_revalidate,
 };
+
+const struct dentry_operations wrapfs_norev_dops = {
+	.d_release	= wrapfs_d_release,
+};
