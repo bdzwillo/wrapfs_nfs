@@ -416,6 +416,8 @@ static void *wrapfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	int len = PAGE_SIZE, err;
 	mm_segment_t old_fs;
 
+	//pr_debug("wrapfs: follow_link(%pd4)\n", dentry);
+
 	/* This is freed by the put_link method assuming a successful call. */
 	buf = kmalloc(len, GFP_KERNEL);
 	if (!buf) {
@@ -456,6 +458,7 @@ static int wrapfs_permission(struct inode *inode, int mask)
 	 * MAY_ACCESS              0x00000010
 	 * MAY_OPEN                0x00000020
 	 * MAY_CHDIR               0x00000040
+	 * MAY_NOT_BLOCK           0x00000080
 	 */
 	if ((mask & MAY_OPEN) && (mask & MAY_WRITE)) {
 		/* no path info available here -> have to wrap file open()
@@ -700,7 +703,12 @@ const struct inode_operations wrapfs_symlink_iops = {
 	.removexattr	= wrapfs_removexattr,
 };
 
+#ifdef USE_RH7_IOPS_WRAPPER
+const struct inode_operations_wrapper wrapfs_dir_iops = {
+	.ops = {
+#else
 const struct inode_operations wrapfs_dir_iops = {
+#endif
 	.create		= wrapfs_create,
 	.lookup		= wrapfs_lookup,
 	.link		= wrapfs_link,
@@ -717,9 +725,17 @@ const struct inode_operations wrapfs_dir_iops = {
 	.getxattr	= wrapfs_getxattr,
 	.listxattr	= wrapfs_listxattr,
 	.removexattr	= wrapfs_removexattr,
+#ifdef USE_RH7_IOPS_WRAPPER
+	},
+#endif
 };
 
+#ifdef USE_RH7_IOPS_WRAPPER
+const struct inode_operations_wrapper wrapfs_main_iops = {
+	.ops = {
+#else
 const struct inode_operations wrapfs_main_iops = {
+#endif
 	.permission	= wrapfs_permission,
 	.setattr	= wrapfs_setattr,
 	.getattr	= wrapfs_getattr,
@@ -727,4 +743,7 @@ const struct inode_operations wrapfs_main_iops = {
 	.getxattr	= wrapfs_getxattr,
 	.listxattr	= wrapfs_listxattr,
 	.removexattr	= wrapfs_removexattr,
+#ifdef USE_RH7_IOPS_WRAPPER
+	},
+#endif
 };
