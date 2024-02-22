@@ -627,10 +627,9 @@ static int wrapfs_getattr(const struct path *path, struct kstat *stat,
 	struct path *lower_path = wrapfs_get_lower_path(dentry);
 	struct dentry *lower_dentry = wrapfs_get_lower_dentry(dentry);
 
-	if (!d_inode(lower_dentry)->i_op->getattr)
-		goto out;
+	if (d_inode(lower_dentry)->i_op->getattr)
+		err = d_inode(lower_dentry)->i_op->getattr(lower_path, &lower_stat, request_mask, flags);
 
-	err = d_inode(lower_dentry)->i_op->getattr(lower_path, &lower_stat, request_mask, flags);
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
 	if (err)
@@ -663,9 +662,9 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_mnt    = wrapfs_get_lower_path(dentry)->mnt;
 
-	if (!d_inode(lower_dentry)->i_op->getattr)
-		goto out;
-	err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
+	if (d_inode(lower_dentry)->i_op->getattr)
+		err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
+
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
 	if (err)
