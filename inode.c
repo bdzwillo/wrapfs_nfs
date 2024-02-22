@@ -565,9 +565,8 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_mnt    = wrapfs_get_lower_path(dentry)->mnt;
 
-	if (!d_inode(lower_dentry)->i_op->getattr)
-		goto out;
-	err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
+	if (d_inode(lower_dentry)->i_op->getattr)
+		err = d_inode(lower_dentry)->i_op->getattr(lower_mnt, lower_dentry, &lower_stat);
 
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
