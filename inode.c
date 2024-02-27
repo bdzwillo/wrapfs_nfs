@@ -707,18 +707,23 @@ out:
 static int wrapfs_setxattr(struct dentry *dentry, struct inode *inode, const char *name,
 		const void *value, size_t size, int flags)
 {
-	int err; struct dentry *lower_dentry;
+	int err;
+	struct dentry *lower_dentry;
+	struct inode *lower_inode;
 
 	pr_debug("wrapfs: setxattr(%pd4, \"%s\", \"%*pE\", %zu, 0x%x)\n", dentry, name, min((int)size, 48), value, size, flags);
 
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
-	if (!(d_inode(lower_dentry)->i_opflags & IOP_XATTR)) {
+	lower_inode = d_inode(lower_dentry);
+	if (!(lower_inode->i_opflags & IOP_XATTR)) {
 		err = -EOPNOTSUPP;
 		goto out;
 	}
-	err = vfs_setxattr(lower_dentry, name, value, size, flags);
+	inode_lock(lower_inode);
+	err = __vfs_setxattr_locked(lower_dentry, name, value, size, flags, NULL);
+	inode_unlock(lower_inode);
 	if (!err && inode) {
-		fsstack_copy_attr_all(inode, d_inode(lower_dentry));
+		fsstack_copy_attr_all(inode, lower_inode);
 	}
 out:
 	return err;
