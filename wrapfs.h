@@ -29,6 +29,7 @@
 #include <linux/sched.h>
 #include <linux/xattr.h>
 #include <linux/exportfs.h>
+#include <linux/pagemap.h>
 #include <linux/version.h>
 
 /* the file system name */
