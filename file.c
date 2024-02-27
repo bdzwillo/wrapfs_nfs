@@ -273,6 +273,17 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 			if (o) {
 				/* see fs/locks.c:locks_remove_flock()
 				 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
+				struct file_lock fl;
+
+				locks_init_lock(&fl);
+			        fl.fl_owner = owner;
+			        fl.fl_pid = current->tgid;
+			        fl.fl_file = lower_file;
+			        fl.fl_flags = FL_FLOCK | FL_CLOSE;
+			        fl.fl_type = F_UNLCK;
+			        fl.fl_end = OFFSET_MAX;
+#else
 				struct file_lock fl = {
 			                .fl_owner = owner,
 			                .fl_pid = current->tgid,
@@ -281,6 +292,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 			                .fl_type = F_UNLCK,
 			                .fl_end = OFFSET_MAX,
 			        };
+#endif
 				if (lower_file->f_op->flock) {
 			                lower_file->f_op->flock(lower_file, F_SETLKW, &fl);
 			        } else {
