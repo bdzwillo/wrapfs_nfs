@@ -31,6 +31,7 @@
  */
 static int lock_parent(struct dentry *dentry,
 		       struct dentry **lower_dentry,
+		       struct vfsmount **lower_mnt,
 		       struct inode **lower_dir_inode)
 {
 	struct dentry *lower_dir_dentry;
@@ -38,6 +39,7 @@ static int lock_parent(struct dentry *dentry,
 	lower_dir_dentry = wrapfs_get_lower_dentry(dentry->d_parent);
 	*lower_dir_inode = d_inode(lower_dir_dentry);
 	*lower_dentry = wrapfs_get_lower_path(dentry)->dentry;
+	*lower_mnt = wrapfs_get_lower_path(dentry)->mnt;
 
 	inode_lock_nested(*lower_dir_inode, I_MUTEX_PARENT);
 	return (*lower_dentry)->d_parent == lower_dir_dentry ? 0 : -EINVAL;
@@ -47,10 +49,16 @@ static int lock_parent(struct dentry *dentry,
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_create(struct user_namespace *mnt_userns, struct inode *dir,
+			 struct dentry *dentry, umode_t mode, bool want_excl)
+#else
 static int wrapfs_create(struct inode *dir, struct dentry *dentry,
 			 umode_t mode, bool want_excl)
+#endif
 {
 	int err;
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir_inode;
 
@@ -58,10 +66,15 @@ static int wrapfs_create(struct inode *dir, struct dentry *dentry,
 	 */
 	pr_debug("wrapfs: create(%pd4, 0%o)\n", dentry, mode);
 
-	err = lock_parent(dentry, &lower_dentry, &lower_dir_inode);
+	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (!err) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = vfs_create(mnt_user_ns(lower_mnt), lower_dir_inode,
+				 lower_dentry, mode, want_excl);
+#else
 		err = vfs_create(lower_dir_inode, lower_dentry, mode,
 				 want_excl);
+#endif
 	}
 	if (err)
 		goto out;
@@ -83,6 +96,7 @@ out:
 static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 		       struct dentry *new_dentry)
 {
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_old_dentry;
 	struct dentry *lower_new_dentry;
 	struct inode *lower_dir_inode;
@@ -93,12 +107,17 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 
 	file_size_save = i_size_read(d_inode(old_dentry));
 	lower_old_dentry = wrapfs_get_lower_dentry(old_dentry);
-	err = lock_parent(new_dentry, &lower_new_dentry, &lower_dir_inode);
+	err = lock_parent(new_dentry, &lower_new_dentry, &lower_mnt, &lower_dir_inode);
 
 	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
 	if (!err) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = vfs_link(lower_old_dentry, mnt_user_ns(lower_mnt),
+			       lower_dir_inode, lower_new_dentry, NULL);
+#else
 		err = vfs_link(lower_old_dentry, lower_dir_inode,
 			       lower_new_dentry, NULL);
+#endif
 	}
 	if (err || d_really_is_negative(lower_new_dentry))
 		goto out;
@@ -123,12 +142,13 @@ out:
 static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	int err;
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir_inode;
 
 	pr_debug("wrapfs: unlink(%pd4)\n", dentry);
 
-	err = lock_parent(dentry, &lower_dentry, &lower_dir_inode);
+	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	dget(lower_dentry);
 
 	/* check that underlying dentry of victim is still hashed and
@@ -142,7 +162,12 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 		err = -EINVAL;
 	} else {
 		/* todo: might handle &delegated_inode to avoid nfs long delegation break */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = vfs_unlink(mnt_user_ns(lower_mnt), lower_dir_inode,
+				 lower_dentry, NULL);
+#else
 		err = vfs_unlink(lower_dir_inode, lower_dentry, NULL);
+#endif
 	}
 
 	/*
@@ -172,19 +197,29 @@ out:
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
+			  struct dentry *dentry, const char *symname)
+#else
 static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 			  const char *symname)
+#endif
 {
 	int err;
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir_inode;
 
 	pr_debug("wrapfs: symlink(\"%s\", %pd4)\n", symname, dentry);
 
-	err = lock_parent(dentry, &lower_dentry, &lower_dir_inode);
+	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (err)
 		goto out;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	err = vfs_symlink(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry, symname);
+#else
 	err = vfs_symlink(lower_dir_inode, lower_dentry, symname);
+#endif
 	if (err)
 		goto out;
 	if (d_really_is_negative(lower_dentry)) {
@@ -207,17 +242,27 @@ out:
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+			struct dentry *dentry, umode_t mode)
+#else
 static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#endif
 {
 	int err;
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir_inode;
 
 	pr_debug("wrapfs: mkdir(%pd4, 0%o)\n", dentry, mode);
 
-	err = lock_parent(dentry, &lower_dentry, &lower_dir_inode);
+	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (!err) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = vfs_mkdir(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry, mode);
+#else
 		err = vfs_mkdir(lower_dir_inode, lower_dentry, mode);
+#endif
 	}
 	if (err)
 		goto out;
@@ -246,13 +291,14 @@ out:
  */
 static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir_inode;
 	int err;
 
 	pr_debug("wrapfs: rmdir(%pd4)\n", dentry);
 
-	err = lock_parent(dentry, &lower_dentry, &lower_dir_inode);
+	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	dget(lower_dentry);
 
 	/* check that underlying dentry of victim is still hashed and
@@ -265,7 +311,11 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 		pr_debug("wrapfs: rmdir(%pd4) warn: lower unhashed", dentry);
 		err = -EINVAL;
 	} else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = vfs_rmdir(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry);
+#else
 		err = vfs_rmdir(lower_dir_inode, lower_dentry);
+#endif
 	}
 	dput(lower_dentry);
 	if (err)
@@ -287,18 +337,28 @@ out:
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_mknod(struct user_namespace *mnt_userns, struct inode *dir,
+			struct dentry *dentry, umode_t mode, dev_t dev)
+#else
 static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 			dev_t dev)
+#endif
 {
 	int err;
+	struct vfsmount *lower_mnt;
 	struct dentry *lower_dentry;
 	struct inode *lower_dir_inode;
 
 	pr_debug("wrapfs: mknod(%pd4, 0%o, 0%o)\n", dentry, mode, dev);
 
-	err = lock_parent(dentry, &lower_dentry, &lower_dir_inode);
+	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (!err) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = vfs_mknod(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry, mode, dev);
+#else
 		err = vfs_mknod(lower_dir_inode, lower_dentry, mode, dev);
+#endif
 	}
 	if (err)
 		goto out;
@@ -327,6 +387,12 @@ out:
  * The caller also holds references on old_dentry and new_dentry.
  * (see: Documentation/filesystems/directory-locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_rename(struct user_namespace *mnt_userns,
+			 struct inode *old_dir, struct dentry *old_dentry,
+			 struct inode *new_dir, struct dentry *new_dentry,
+			 unsigned int flags)
+#else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
 static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			 struct inode *new_dir, struct dentry *new_dentry,
@@ -335,8 +401,11 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			 struct inode *new_dir, struct dentry *new_dentry)
 #endif
+#endif
 {
 	int err = 0;
+	struct path *lower_old_path;
+	struct path *lower_new_path;
 	struct dentry *lower_old_dentry = NULL;
 	struct dentry *lower_new_dentry = NULL;
 	struct dentry *lower_old_dir_dentry = NULL;
@@ -348,7 +417,9 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 #endif
 	pr_debug("wrapfs: rename(%pd4, %pd4)\n", old_dentry, new_dentry);
 
+	lower_old_path = wrapfs_get_lower_path(old_dentry);
 	lower_old_dentry = wrapfs_get_lower_dentry(old_dentry);
+	lower_new_path = wrapfs_get_lower_path(new_dentry);
 	lower_new_dentry = wrapfs_get_lower_dentry(new_dentry);
 	dget(lower_old_dentry);
 	dget(lower_new_dentry);
@@ -383,9 +454,23 @@ static int wrapfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	}
 
 	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	{
+		struct renamedata rd = {};
+
+		rd.old_mnt_userns	= mnt_user_ns(lower_old_path->mnt);
+		rd.old_dir		= d_inode(lower_old_dir_dentry);
+		rd.old_dentry		= lower_old_dentry;
+		rd.new_mnt_userns	= mnt_user_ns(lower_new_path->mnt);
+		rd.new_dir		= d_inode(lower_new_dir_dentry);
+		rd.new_dentry		= lower_new_dentry;
+		err = vfs_rename(&rd);
+	}
+#else
 	err = vfs_rename(d_inode(lower_old_dir_dentry), lower_old_dentry,
 			 d_inode(lower_new_dir_dentry), lower_new_dentry,
 			 NULL, 0);
+#endif
 	if (err)
 		goto out;
 
@@ -520,7 +605,12 @@ out:
  * Also ->permission() may not block if called in rcu-walk mode (mask & MAY_NOT_BLOCK).
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_permission(struct user_namespace *mnt_userns,
+			     struct inode *inode, int mask)
+#else
 static int wrapfs_permission(struct inode *inode, int mask)
+#endif
 {
 	struct inode *lower_inode;
 	int err;
@@ -541,16 +631,26 @@ static int wrapfs_permission(struct inode *inode, int mask)
 		pr_debug("wrapfs: permission_open_write(%s:%lu, 0x%x)\n", inode ? inode->i_sb->s_id : "NULL", inode ? inode->i_ino : 0, mask);
 	}
 	lower_inode = wrapfs_lower_inode(inode);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	err = inode_permission(lower_inode->i_sb->s_user_ns, lower_inode, mask);
+#else
 	err = inode_permission(lower_inode, mask);
+#endif
 	return err;
 }
 
 /* For ->setattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_setattr(struct user_namespace *mnt_userns,
+			  struct dentry *dentry, struct iattr *ia)
+#else
 static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
+#endif
 {
 	int err;
+	struct path *lower_path;
 	struct dentry *lower_dentry;
 	struct inode *inode;
 	struct inode *lower_inode;
@@ -567,15 +667,20 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	 * this user can change the lower inode: that should happen when
 	 * calling notify_change on the lower inode.
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	err = setattr_prepare(mnt_userns, dentry, ia);
+#else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
 	err = setattr_prepare(dentry, ia);
 #else
 	err = inode_change_ok(inode, ia);
 #endif
+#endif
 	if (err)
 		goto out;
 
-	lower_dentry = wrapfs_get_lower_dentry(dentry);
+	lower_path = wrapfs_get_lower_path(dentry);
+	lower_dentry = lower_path->dentry;
 	lower_inode = wrapfs_lower_inode(inode);
 
 	/* prepare our own lower struct iattr (with the lower file) */
@@ -613,8 +718,13 @@ static int wrapfs_setattr(struct dentry *dentry, struct iattr *ia)
 	 * tries to open(), unlink(), then ftruncate() a file.
 	 */
 	inode_lock(d_inode(lower_dentry));
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	err = notify_change(mnt_user_ns(lower_path->mnt), lower_dentry, &lower_ia, /* note: lower_ia */
+			    NULL);
+#else
 	err = notify_change(lower_dentry, &lower_ia, /* note: lower_ia */
 			    NULL);
+#endif
 	inode_unlock(d_inode(lower_dentry));
 	if (err)
 		goto out;
@@ -634,8 +744,14 @@ out:
 /* For ->getattr() the caller holds *no* inode lock on d_inode(path->dentry)
  * (see: Documentation/filesystems/Locking)
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_getattr(struct user_namespace *mnt_userns,
+			  const struct path *path, struct kstat *stat,
+			  u32 request_mask, unsigned int flags)
+#else
 static int wrapfs_getattr(const struct path *path, struct kstat *stat,
                           u32 request_mask, unsigned int flags)
+#endif
 {
 	int err = 0;
 	struct kstat lower_stat;
@@ -643,9 +759,13 @@ static int wrapfs_getattr(const struct path *path, struct kstat *stat,
 	struct path *lower_path = wrapfs_get_lower_path(dentry);
 	struct dentry *lower_dentry = wrapfs_get_lower_dentry(dentry);
 
-	if (d_inode(lower_dentry)->i_op->getattr)
+	if (d_inode(lower_dentry)->i_op->getattr) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		err = d_inode(lower_dentry)->i_op->getattr(mnt_user_ns(lower_path->mnt), lower_path, &lower_stat, request_mask, flags);
+#else
 		err = d_inode(lower_dentry)->i_op->getattr(lower_path, &lower_stat, request_mask, flags);
-
+#endif
+	}
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
 	if (err)
@@ -659,7 +779,11 @@ static int wrapfs_getattr(const struct path *path, struct kstat *stat,
 	} else {
 		stat->blocks = wrapfs_lower_inode(d_inode(dentry))->i_blocks;
 	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
+#else
 	generic_fillattr(d_inode(dentry), stat);
+#endif
 out:
 	return err;
 }
@@ -708,11 +832,13 @@ static int wrapfs_setxattr(struct dentry *dentry, struct inode *inode, const cha
 		const void *value, size_t size, int flags)
 {
 	int err;
+	struct path *lower_path;
 	struct dentry *lower_dentry;
 	struct inode *lower_inode;
 
 	pr_debug("wrapfs: setxattr(%pd4, \"%s\", \"%*pE\", %zu, 0x%x)\n", dentry, name, min((int)size, 48), value, size, flags);
 
+	lower_path = wrapfs_get_lower_path(dentry);
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	lower_inode = d_inode(lower_dentry);
 	if (!(lower_inode->i_opflags & IOP_XATTR)) {
@@ -720,7 +846,11 @@ static int wrapfs_setxattr(struct dentry *dentry, struct inode *inode, const cha
 		goto out;
 	}
 	inode_lock(lower_inode);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	err = __vfs_setxattr_locked(mnt_user_ns(lower_path->mnt), lower_dentry, name, value, size, flags, NULL);
+#else
 	err = __vfs_setxattr_locked(lower_dentry, name, value, size, flags, NULL);
+#endif
 	inode_unlock(lower_inode);
 	if (!err && inode) {
 		fsstack_copy_attr_all(inode, lower_inode);
@@ -843,19 +973,25 @@ out:
 static int wrapfs_removexattr(struct dentry *dentry, struct inode *inode, const char *name)
 {
 	int err;
+	struct path *lower_path;
 	struct dentry *lower_dentry;
 	struct inode *lower_inode;
 
 	pr_debug("wrapfs: removexattr(%pd4, \"%s\")\n", dentry, name);
 
-	lower_dentry = wrapfs_get_lower_dentry(dentry);
+	lower_path = wrapfs_get_lower_path(dentry);
+	lower_dentry = lower_path->dentry;
 	lower_inode = wrapfs_lower_inode(inode);
 	if (!(lower_inode->i_opflags & IOP_XATTR)) {
 		err = -EOPNOTSUPP;
 		goto out;
 	}
 	inode_lock(lower_inode);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	err = __vfs_removexattr(mnt_user_ns(lower_path->mnt), lower_dentry, name);
+#else
 	err = __vfs_removexattr(lower_dentry, name);
+#endif
 	inode_unlock(lower_inode);
 	if (!err && inode) {
 		fsstack_copy_attr_all(inode, lower_inode);
@@ -968,10 +1104,18 @@ static int wrapfs_xattr_get(const struct xattr_handler *handler,
 	return wrapfs_getxattr(dentry, inode, name, buffer, size);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+static int wrapfs_xattr_set(const struct xattr_handler *handler,
+			    struct user_namespace *mnt_userns,
+			    struct dentry *dentry, struct inode *inode,
+			    const char *name, const void *value, size_t size,
+			    int flags)
+#else
 static int wrapfs_xattr_set(const struct xattr_handler *handler,
 			    struct dentry *dentry, struct inode *inode,
 			    const char *name, const void *value, size_t size,
 			    int flags)
+#endif
 {
 	if (value)
 		return wrapfs_setxattr(dentry, inode, name, value, size, flags);
