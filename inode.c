@@ -70,7 +70,7 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
 	err = vfs_link(lower_old_dentry, d_inode(lower_dir_dentry),
 		       lower_new_dentry, NULL);
-	if (err || !d_inode(lower_new_dentry))
+	if (err || d_really_is_negative(lower_new_dentry))
 		goto out;
 
 	err = wrapfs_interpose(new_dentry, dir->i_sb, lower_new_dentry);
@@ -163,7 +163,7 @@ static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 	err = vfs_symlink(d_inode(lower_parent_dentry), lower_dentry, symname);
 	if (err)
 		goto out;
-	if (!d_inode(lower_dentry)) {
+	if (d_really_is_negative(lower_dentry)) {
 		pr_debug("wrapfs: symlink(%pd4) warn: lower dentry negative", dentry);
 		goto out;
 	}
@@ -175,7 +175,7 @@ static int wrapfs_symlink(struct inode *dir, struct dentry *dentry,
 out:
 	unlock_dir(lower_parent_dentry);
 	dput(lower_dentry);
- 	if (!d_inode(dentry))
+	if (d_really_is_negative(dentry))
 		d_drop(dentry);
 	return err;
 }
@@ -198,7 +198,7 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	err = vfs_mkdir(d_inode(lower_parent_dentry), lower_dentry, mode);
 	if (err)
 		goto out;
-	if (!d_inode(lower_dentry)) {
+	if (d_really_is_negative(lower_dentry)) {
 		pr_debug("wrapfs: mkdir(%pd4) warn: lower dentry negative", dentry);
 		goto out;
 	}
@@ -212,7 +212,7 @@ static int wrapfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	set_nlink(dir, d_inode(lower_parent_dentry)->i_nlink);
 out:
 	unlock_dir(lower_parent_dentry);
-	if (!d_inode(dentry))
+	if (d_really_is_negative(dentry))
 		d_drop(dentry);
 	return err;
 }
@@ -254,7 +254,7 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 	if (err)
 		goto out;
 
-	if (d_inode(dentry))
+	if (d_really_is_positive(dentry))
 		clear_nlink(d_inode(dentry));
 	fsstack_copy_attr_times(dir, lower_dir_inode);
 	fsstack_copy_inode_size(dir, lower_dir_inode);
@@ -286,7 +286,7 @@ static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	err = vfs_mknod(d_inode(lower_parent_dentry), lower_dentry, mode, dev);
 	if (err)
 		goto out;
-	if (!d_inode(lower_dentry)) {
+	if (d_really_is_negative(lower_dentry)) {
 		pr_debug("wrapfs: mknod(%pd4) warn: lower dentry negative", dentry);
 		goto out;
 	}
@@ -297,7 +297,7 @@ static int wrapfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	fsstack_copy_inode_size(dir, d_inode(lower_parent_dentry));
 out:
 	unlock_dir(lower_parent_dentry);
-	if (!d_inode(dentry))
+	if (d_really_is_negative(dentry))
 		d_drop(dentry);
 	return err;
 }
@@ -754,7 +754,7 @@ static int wrapfs_setxattr(struct dentry *dentry, const char *name, const void *
 	err = vfs_setxattr(lower_dentry, name, value, size, flags);
 	if (err)
 		goto out;
-	if (!d_inode(lower_dentry)) {
+	if (d_really_is_negative(lower_dentry)) {
 		pr_debug("wrapfs: setxattr(%pd4) warn: lower_dentry negative", dentry);
 		goto out;
 	}
