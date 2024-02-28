@@ -29,6 +29,7 @@
 #include <linux/sched.h>
 #include <linux/xattr.h>
 #include <linux/exportfs.h>
+#include <linux/pagemap.h>
 #include <linux/version.h>
 
 /* the file system name */
@@ -48,11 +49,17 @@
 /* operations vectors defined in specific files */
 extern const struct file_operations wrapfs_main_fops;
 extern const struct file_operations wrapfs_dir_fops;
+#ifdef USE_RH7_IOPS_WRAPPER
+extern const struct inode_operations_wrapper wrapfs_main_iops;
+extern const struct inode_operations_wrapper wrapfs_dir_iops;
+#else
 extern const struct inode_operations wrapfs_main_iops;
 extern const struct inode_operations wrapfs_dir_iops;
+#endif
 extern const struct inode_operations wrapfs_symlink_iops;
 extern const struct super_operations wrapfs_sops;
 extern const struct dentry_operations wrapfs_dops;
+extern const struct dentry_operations wrapfs_norev_dops;
 extern const struct address_space_operations wrapfs_aops, wrapfs_dummy_aops;
 extern const struct export_operations wrapfs_export_ops;
 extern const struct xattr_handler *wrapfs_xattr_handlers[];
@@ -186,19 +193,5 @@ static inline struct dentry *wrapfs_get_lower_dentry(const struct dentry *dentry
 {
 	struct dentry *lower_dentry = WRAPFS_D(dentry)->lower_path.dentry;
 	return lower_dentry;
-}
-
-/* locking helpers */
-static inline struct dentry *lock_parent(struct dentry *dentry)
-{
-	struct dentry *dir = dget_parent(dentry);
-	inode_lock_nested(d_inode(dir), I_MUTEX_PARENT);
-	return dir;
-}
-
-static inline void unlock_dir(struct dentry *dir)
-{
-	inode_unlock(d_inode(dir));
-	dput(dir);
 }
 #endif	/* not _WRAPFS_H_ */

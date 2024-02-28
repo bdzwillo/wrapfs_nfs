@@ -66,25 +66,31 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	sb->s_op = &wrapfs_sops;
 	sb->s_xattr = wrapfs_xattr_handlers;
 	sb->s_export_op = &wrapfs_export_ops; /* adding NFS support */
-	sb->s_d_op = &wrapfs_dops;
 
+	/* announce revalidate funtions only if supported by underlying fs
+	 */
+	if (lower_path.dentry->d_flags & (DCACHE_OP_REVALIDATE|DCACHE_OP_WEAK_REVALIDATE)) {
+		sb->s_d_op = &wrapfs_dops;
+	} else {
+		sb->s_d_op = &wrapfs_norev_dops;
+	}
 	/* get a new inode and allocate our root dentry */
 	inode = wrapfs_iget(sb, d_inode(lower_path.dentry));
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
-		goto out_sput;
+		goto out_free;
 	}
 	sb->s_root = d_make_root(inode);
 	if (!sb->s_root) {
 		// d_make_root() calls iput(inode) on error
 		err = -ENOMEM;
-		goto out_sput;
+		goto out_free;
 	}
 	/* link the upper and lower dentries */
 	sb->s_root->d_fsdata = NULL;
 	err = wrapfs_new_dentry_private_data(sb->s_root);
 	if (err)
-		goto out_freeroot;
+		goto out_free;
 
 	/* if get here: cannot have error */
 
@@ -103,18 +109,12 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 		       dev_name, lower_sb->s_type->name);
 	goto out; /* all is well */
 
-	/* no longer needed: wrapfs_free_dentry_private_data(sb->s_root); */
-out_freeroot:
-	dput(sb->s_root);
-	sb->s_root = NULL;
-out_sput:
-	/* drop refs we took earlier */
-	atomic_dec(&lower_sb->s_active);
-	kfree(WRAPFS_SB(sb));
-	sb->s_fs_info = NULL;
+	/* Calls deactivate_locked_super()->kill_sb()->wrapfs_kill_super_block()
+	 * when ->mount() returns an error. This will call wrapfs_put_super()
+	 * through kill_anon_super(), where all remaining resources are released.
+	 */
 out_free:
 	path_put(&lower_path);
-
 out:
 	return err;
 }

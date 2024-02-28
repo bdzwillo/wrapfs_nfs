@@ -103,13 +103,13 @@ struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 	atomic64_inc(&inode->i_version);
 
 	/* use different set of inode ops for symlinks & directories */
-	if (S_ISDIR(lower_inode->i_mode))
+	if (S_ISDIR(lower_inode->i_mode)) {
 		inode->i_op = &wrapfs_dir_iops;
-	else if (S_ISLNK(lower_inode->i_mode))
+	} else if (S_ISLNK(lower_inode->i_mode)) {
 		inode->i_op = &wrapfs_symlink_iops;
-	else
+	} else {
 		inode->i_op = &wrapfs_main_iops;
-
+	}
 	/* use different set of file ops for directories */
 	if (S_ISDIR(lower_inode->i_mode)) {
 		inode->i_fop = &wrapfs_dir_fops;
