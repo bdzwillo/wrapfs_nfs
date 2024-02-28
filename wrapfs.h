@@ -29,6 +29,7 @@
 #include <linux/sched.h>
 #include <linux/xattr.h>
 #include <linux/exportfs.h>
+#include <linux/pagemap.h>
 #include <linux/version.h>
 
 /* the file system name */
@@ -212,19 +213,5 @@ static inline struct dentry *wrapfs_get_lower_dentry(const struct dentry *dentry
 {
 	struct dentry *lower_dentry = WRAPFS_D(dentry)->lower_path.dentry;
 	return lower_dentry;
-}
-
-/* locking helpers */
-static inline struct dentry *lock_parent(struct dentry *dentry)
-{
-	struct dentry *dir = dget_parent(dentry);
-	inode_lock_nested(d_inode(dir), I_MUTEX_PARENT);
-	return dir;
-}
-
-static inline void unlock_dir(struct dentry *dir)
-{
-	inode_unlock(d_inode(dir));
-	dput(dir);
 }
 #endif	/* not _WRAPFS_H_ */

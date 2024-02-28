@@ -68,7 +68,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	int err = 0;
 	struct super_block *lower_sb;
 	struct path lower_path;
-#if defined(WRAPFS_INTERCEPT_INODE_MODIFY) 
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
 	struct wrapfs_mountopt *opts = raw_data;
 	char *dev_name = (char *)opts->lower_path_name;
 #else
@@ -104,7 +104,7 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	lower_sb = lower_path.dentry->d_sb;
 	atomic_inc(&lower_sb->s_active);
 	wrapfs_set_lower_super(sb, lower_sb);
-#if defined(WRAPFS_INTERCEPT_INODE_MODIFY) 
+#if defined(WRAPFS_INTERCEPT_INODE_MODIFY)
 	WRAPFS_SB(sb)->rdonly = opts->block;
 	WRAPFS_SB(sb)->single_uid = opts->uid;
 #endif
@@ -138,19 +138,19 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 	inode = wrapfs_iget(sb, d_inode(lower_path.dentry));
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
-		goto out_sput;
+		goto out_free;
 	}
 	sb->s_root = d_make_root(inode);
 	if (!sb->s_root) {
 		// d_make_root() calls iput(inode) on error
 		err = -ENOMEM;
-		goto out_sput;
+		goto out_free;
 	}
 	/* link the upper and lower dentries */
 	sb->s_root->d_fsdata = NULL;
 	err = wrapfs_new_dentry_private_data(sb->s_root);
 	if (err)
-		goto out_freeroot;
+		goto out_free;
 
 	/* if get here: cannot have error */
 
@@ -169,18 +169,12 @@ static int wrapfs_read_super(struct super_block *sb, void *raw_data, int silent)
 		       dev_name, lower_sb->s_type->name);
 	goto out; /* all is well */
 
-	/* no longer needed: wrapfs_free_dentry_private_data(sb->s_root); */
-out_freeroot:
-	dput(sb->s_root);
-	sb->s_root = NULL;
-out_sput:
-	/* drop refs we took earlier */
-	atomic_dec(&lower_sb->s_active);
-	kfree(WRAPFS_SB(sb));
-	sb->s_fs_info = NULL;
+	/* Calls deactivate_locked_super()->kill_sb()->wrapfs_kill_super_block()
+	 * when ->mount() returns an error. This will call wrapfs_put_super()
+	 * through kill_anon_super(), where all remaining resources are released.
+	 */
 out_free:
 	path_put(&lower_path);
-
 out:
 	return err;
 }
@@ -203,7 +197,7 @@ struct dentry *wrapfs_mount(struct file_system_type *fs_type, int flags,
 	void *lower_path_name = (void *) dev_name;
 
 	return mount_nodev(fs_type, flags, lower_path_name,
-		wrapfs_read_super);
+			   wrapfs_read_super);
 #endif
 }
 

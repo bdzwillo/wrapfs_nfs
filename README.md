@@ -4,7 +4,7 @@ This wrapfs version is based on the original wrapfs from https://wrapfs.filesyst
 and supports operation as a loopback filesystem on top of an underlying nfs mount.
 
 - this was implemented for a project with the requirement for a loadable vfs-module 
-  running on centos/redhat-7 & 8 servers.
+  running on centos/redhat-7, 8 & 9 servers.
 
 - it was choosen to base the vfs on wrapfs, since there is no simple in-tree
   implementation of a loopback filesystem, and some other vfs implementations
@@ -14,8 +14,8 @@ and supports operation as a loopback filesystem on top of an underlying nfs moun
   adjustments to compile on centos. For the initial centos-7.8 version, the best
   match was wrapfs-v3.15.10-96 from http://download.filesystems.org/wrapfs/patches/.
 
-- the current version is compatible to the centos-7.9 3.10.0-1160.95.1.el7
-  kernel, and on centos-8.8 to the linux-4.18.0-477.27.1.el8 kernel.
+- the current version is compatible to the centos-7.9 3.10.0-1160 kernel, to the
+  redhat-8.9/el8 4.18.0-513 kernel and on redhat-9.3/el9 to the 5.14.0-362 kernel.
 
 - this wrapfs version fixes some bugs when mounted on top of a remote filesystem.
   It also includes some simplifications for the lookup-, locking- & mmap-code based 
@@ -29,7 +29,7 @@ Show all available pr_debug() calls:
 
 Enable output for all pr_debug() calls:
 
-```# echo "file */wrapfs/* +p" > /sys/kernel/debug/dynamic_debug/control```
+```# echo "format wrapfs: +p" > /sys/kernel/debug/dynamic_debug/control```
 
 Intercept Example
 -----------------
