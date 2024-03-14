@@ -831,14 +831,19 @@ static int wrapfs_getattr(const struct path *path, struct kstat *stat,
 		 * might have changed after the last revalidate.
 		 */
 		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
-	} else {
-		stat->blocks = wrapfs_lower_inode(d_inode(dentry))->i_blocks;
-	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
-	generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
+		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
 #else
-	generic_fillattr(d_inode(dentry), stat);
+		generic_fillattr(d_inode(dentry), stat);
 #endif
+	} else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
+#else
+		generic_fillattr(d_inode(dentry), stat);
+#endif
+		stat->blocks = lower_stat.blocks;
+	}
 out:
 	return err;
 }
@@ -870,10 +875,11 @@ static int wrapfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 		 * might have changed after the last revalidate.
 		 */
 		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
+		generic_fillattr(d_inode(dentry), stat);
 	} else {
-		stat->blocks = wrapfs_lower_inode(d_inode(dentry))->i_blocks;
+		generic_fillattr(d_inode(dentry), stat);
+		stat->blocks = lower_stat.blocks;
 	}
-	generic_fillattr(d_inode(dentry), stat);
 out:
 	return err;
 }
