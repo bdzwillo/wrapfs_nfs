@@ -611,10 +611,11 @@ static int wrapfs_getattr(struct user_namespace *mnt_userns,
 		 * might have changed after the last revalidate.
 		 */
 		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
+		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
 	} else {
-		stat->blocks = wrapfs_lower_inode(d_inode(dentry))->i_blocks;
+		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
+		stat->blocks = lower_stat.blocks;
 	}
-	generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
 out:
 	return err;
 }
