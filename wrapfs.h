@@ -47,6 +47,7 @@
 
 #if defined(RHEL_MAJOR) && RHEL_MAJOR == 7
 #define USE_RH7_IOPS_WRAPPER 1
+#define USE_RH7_INSTANTIATE_NEW 1
 #endif
 
 /* wrapfs root inode number */

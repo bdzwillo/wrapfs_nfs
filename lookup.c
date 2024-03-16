@@ -203,7 +203,12 @@ int wrapfs_interpose(struct dentry *dentry, struct super_block *sb,
 	 * unlock_new_inode() and d_instantiate().
 	 */
 	if (inode->i_state & I_NEW) {
+#ifdef USE_RH7_INSTANTIATE_NEW
 		d_instantiate_new(dentry, inode);
+#else
+		unlock_new_inode(inode);
+		d_instantiate(dentry, inode);
+#endif
 	} else {
 		d_instantiate(dentry, inode);
 	}
