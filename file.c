@@ -89,6 +89,13 @@ static int wrapfs_mmap(struct file *file, struct vm_area_struct *vma)
 	if (WARN_ON(file != vma->vm_file))
  		return -EIO;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
+	/* mmap_region() now calls fput() on the vma->vm_file.
+	 */
+	vma_set_file(vma, lower_file);
+
+	err = lower_file->f_op->mmap(lower_file, vma);
+#else
 	vma->vm_file = get_file(lower_file);
 
 	err = lower_file->f_op->mmap(lower_file, vma);
@@ -99,6 +106,7 @@ static int wrapfs_mmap(struct file *file, struct vm_area_struct *vma)
 		/* Drop reference count from previous vm_file value */
 		fput(file);
 	}
+#endif
 	file_accessed(file);
 
 	return err;
