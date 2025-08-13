@@ -3,7 +3,7 @@
  * Copyright (c) 2009	   Shrikar Archak
  * Copyright (c) 2003-2020 Stony Brook University
  * Copyright (c) 2003-2020 The Research Foundation of SUNY
- * Copyright (c) 2020-2021 Barnim Dzwillo @ Strato AG
+ * Copyright (c) 2020-2025 Barnim Dzwillo @ Strato AG
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -49,7 +49,7 @@ static int lock_parent(struct dentry *dentry,
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_create(struct user_namespace *mnt_userns, struct inode *dir,
+static int wrapfs_create(struct mnt_idmap *idmap, struct inode *dir,
 			 struct dentry *dentry, umode_t mode, bool want_excl)
 {
 	int err;
@@ -63,7 +63,7 @@ static int wrapfs_create(struct user_namespace *mnt_userns, struct inode *dir,
 
 	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (!err) {
-		err = vfs_create(mnt_user_ns(lower_mnt), lower_dir_inode,
+		err = vfs_create(mnt_idmap(lower_mnt), lower_dir_inode,
 				 lower_dentry, mode, want_excl);
 	}
 	if (err)
@@ -101,7 +101,7 @@ static int wrapfs_link(struct dentry *old_dentry, struct inode *dir,
 
 	/* todo: might handle &delegated_inode to avoid nfs long delegation break */
 	if (!err) {
-		err = vfs_link(lower_old_dentry, mnt_user_ns(lower_mnt),
+		err = vfs_link(lower_old_dentry, mnt_idmap(lower_mnt),
 			       lower_dir_inode, lower_new_dentry, NULL);
 	}
 	if (err || d_really_is_negative(lower_new_dentry))
@@ -147,7 +147,7 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 		err = -EINVAL;
 	} else {
 		/* todo: might handle &delegated_inode to avoid nfs long delegation break */
-		err = vfs_unlink(mnt_user_ns(lower_mnt), lower_dir_inode,
+		err = vfs_unlink(mnt_idmap(lower_mnt), lower_dir_inode,
 				 lower_dentry, NULL);
 	}
 
@@ -178,7 +178,7 @@ out:
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
+static int wrapfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 			  struct dentry *dentry, const char *symname)
 {
 	int err;
@@ -191,7 +191,7 @@ static int wrapfs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
 	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (err)
 		goto out;
-	err = vfs_symlink(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry, symname);
+	err = vfs_symlink(mnt_idmap(lower_mnt), lower_dir_inode, lower_dentry, symname);
 	if (err)
 		goto out;
 	if (d_really_is_negative(lower_dentry)) {
@@ -214,7 +214,7 @@ out:
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+static int wrapfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 			struct dentry *dentry, umode_t mode)
 {
 	int err;
@@ -226,7 +226,7 @@ static int wrapfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
 
 	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (!err) {
-		err = vfs_mkdir(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry, mode);
+		err = vfs_mkdir(mnt_idmap(lower_mnt), lower_dir_inode, lower_dentry, mode);
 	}
 	if (err)
 		goto out;
@@ -275,7 +275,7 @@ static int wrapfs_rmdir(struct inode *dir, struct dentry *dentry)
 		pr_debug("wrapfs: rmdir(%pd4) warn: lower unhashed", dentry);
 		err = -EINVAL;
 	} else {
-		err = vfs_rmdir(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry);
+		err = vfs_rmdir(mnt_idmap(lower_mnt), lower_dir_inode, lower_dentry);
 	}
 	dput(lower_dentry);
 	if (err)
@@ -297,7 +297,7 @@ out:
  * The caller also holds a reference on dentry.
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_mknod(struct user_namespace *mnt_userns, struct inode *dir,
+static int wrapfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 			struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	int err;
@@ -309,7 +309,7 @@ static int wrapfs_mknod(struct user_namespace *mnt_userns, struct inode *dir,
 
 	err = lock_parent(dentry, &lower_dentry, &lower_mnt, &lower_dir_inode);
 	if (!err) {
-		err = vfs_mknod(mnt_user_ns(lower_mnt), lower_dir_inode, lower_dentry, mode, dev);
+		err = vfs_mknod(mnt_idmap(lower_mnt), lower_dir_inode, lower_dentry, mode, dev);
 	}
 	if (err)
 		goto out;
@@ -338,7 +338,7 @@ out:
  * The caller also holds references on old_dentry and new_dentry.
  * (see: Documentation/filesystems/directory-locking)
  */
-static int wrapfs_rename(struct user_namespace *mnt_userns,
+static int wrapfs_rename(struct mnt_idmap *idmap,
 			 struct inode *old_dir, struct dentry *old_dentry,
 			 struct inode *new_dir, struct dentry *new_dentry,
 			 unsigned int flags)
@@ -397,10 +397,10 @@ static int wrapfs_rename(struct user_namespace *mnt_userns,
 	{
 		struct renamedata rd = {};
 
-		rd.old_mnt_userns	= mnt_user_ns(lower_old_path->mnt);
+		rd.old_mnt_idmap	= mnt_idmap(lower_old_path->mnt);
 		rd.old_dir		= d_inode(lower_old_dir_dentry);
 		rd.old_dentry		= lower_old_dentry;
-		rd.new_mnt_userns	= mnt_user_ns(lower_new_path->mnt);
+		rd.new_mnt_idmap	= mnt_idmap(lower_new_path->mnt);
 		rd.new_dir		= d_inode(lower_new_dir_dentry);
 		rd.new_dentry		= lower_new_dentry;
 		err = vfs_rename(&rd);
@@ -475,7 +475,7 @@ out:
  * Also ->permission() may not block if called in rcu-walk mode (mask & MAY_NOT_BLOCK).
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_permission(struct user_namespace *mnt_userns,
+static int wrapfs_permission(struct mnt_idmap *idmap,
 			     struct inode *inode, int mask)
 {
 	struct inode *lower_inode;
@@ -497,14 +497,19 @@ static int wrapfs_permission(struct user_namespace *mnt_userns,
 		pr_debug("wrapfs: permission_open_write(%s:%lu, 0x%x)\n", inode ? inode->i_sb->s_id : "NULL", inode ? inode->i_ino : 0, mask);
 	}
 	lower_inode = wrapfs_lower_inode(inode);
-	err = inode_permission(lower_inode->i_sb->s_user_ns, lower_inode, mask);
+	struct dentry *root_dentry = inode->i_sb->s_root;
+	if (!root_dentry && WRAPFS_D(root_dentry)) {
+		return -ECHILD;
+	}
+	struct path *lower_root_path = wrapfs_get_lower_path(root_dentry);
+	err = inode_permission(mnt_idmap(lower_root_path->mnt), lower_inode, mask);
 	return err;
 }
 
 /* For ->setattr() the caller holds the inode lock on d_inode(dentry).
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_setattr(struct user_namespace *mnt_userns,
+static int wrapfs_setattr(struct mnt_idmap *idmap,
 			  struct dentry *dentry, struct iattr *ia)
 {
 	int err;
@@ -525,7 +530,7 @@ static int wrapfs_setattr(struct user_namespace *mnt_userns,
 	 * this user can change the lower inode: that should happen when
 	 * calling notify_change on the lower inode.
 	 */
-	err = setattr_prepare(mnt_userns, dentry, ia);
+	err = setattr_prepare(idmap, dentry, ia);
 	if (err)
 		goto out;
 
@@ -568,7 +573,7 @@ static int wrapfs_setattr(struct user_namespace *mnt_userns,
 	 * tries to open(), unlink(), then ftruncate() a file.
 	 */
 	inode_lock(d_inode(lower_dentry));
-	err = notify_change(mnt_user_ns(lower_path->mnt), lower_dentry, &lower_ia, /* note: lower_ia */
+	err = notify_change(mnt_idmap(lower_path->mnt), lower_dentry, &lower_ia, /* note: lower_ia */
 			    NULL);
 	inode_unlock(d_inode(lower_dentry));
 	if (err)
@@ -588,9 +593,9 @@ out:
 /* For ->getattr() the caller holds *no* inode lock on d_inode(path->dentry)
  * (see: Documentation/filesystems/Locking)
  */
-static int wrapfs_getattr(struct user_namespace *mnt_userns,
-			  const struct path *path, struct kstat *stat,
-			  u32 request_mask, unsigned int flags)
+static int wrapfs_getattr(struct mnt_idmap *idmap,
+                          const struct path *path, struct kstat *stat,
+                          u32 request_mask, unsigned int flags)
 {
 	int err = 0;
 	struct kstat lower_stat;
@@ -599,7 +604,7 @@ static int wrapfs_getattr(struct user_namespace *mnt_userns,
 	struct dentry *lower_dentry = wrapfs_get_lower_dentry(dentry);
 
 	if (d_inode(lower_dentry)->i_op->getattr) {
-		err = d_inode(lower_dentry)->i_op->getattr(mnt_user_ns(lower_path->mnt), lower_path, &lower_stat, request_mask, flags);
+		err = d_inode(lower_dentry)->i_op->getattr(mnt_idmap(lower_path->mnt), lower_path, &lower_stat, request_mask, flags);
 	}
 	pr_debug("wrapfs: getattr(%pd4) = %d\n", dentry, err);
 
@@ -611,9 +616,9 @@ static int wrapfs_getattr(struct user_namespace *mnt_userns,
 		 * might have changed after the last revalidate.
 		 */
 		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
-		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
+		generic_fillattr(mnt_idmap(lower_path->mnt), d_inode(dentry), stat);
 	} else {
-		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
+		generic_fillattr(mnt_idmap(lower_path->mnt), d_inode(dentry), stat);
 		stat->blocks = lower_stat.blocks;
 	}
 out:
@@ -641,7 +646,7 @@ static int wrapfs_setxattr(struct dentry *dentry, struct inode *inode, const cha
 		goto out;
 	}
 	inode_lock(lower_inode);
-	err = __vfs_setxattr_locked(mnt_user_ns(lower_path->mnt), lower_dentry, name, value, size, flags, NULL);
+	err = __vfs_setxattr_locked(mnt_idmap(lower_path->mnt), lower_dentry, name, value, size, flags, NULL);
 	inode_unlock(lower_inode);
 	if (!err && inode) {
 		fsstack_copy_attr_all(inode, lower_inode);
@@ -723,7 +728,7 @@ static int wrapfs_removexattr(struct dentry *dentry, struct inode *inode, const 
 		goto out;
 	}
 	inode_lock(lower_inode);
-	err = __vfs_removexattr(mnt_user_ns(lower_path->mnt), lower_dentry, name);
+	err = __vfs_removexattr(mnt_idmap(lower_path->mnt), lower_dentry, name);
 	inode_unlock(lower_inode);
 	if (!err && inode) {
 		fsstack_copy_attr_all(inode, lower_inode);
@@ -771,7 +776,7 @@ static int wrapfs_xattr_get(const struct xattr_handler *handler,
 }
 
 static int wrapfs_xattr_set(const struct xattr_handler *handler,
-			    struct user_namespace *mnt_userns,
+			    struct mnt_idmap *idmap,
 			    struct dentry *dentry, struct inode *inode,
 			    const char *name, const void *value, size_t size,
 			    int flags)
