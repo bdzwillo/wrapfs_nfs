@@ -15,7 +15,7 @@ and supports operation as a loopback filesystem on top of an underlying nfs moun
   match was wrapfs-v3.15.10-96 from http://download.filesystems.org/wrapfs/patches/.
 
 - the current version is compatible to the centos-7.9 3.10.0-1160 kernel, to the
-  redhat-8.9/el8 4.18.0-513 kernel and on redhat-9.3/el9 to the 5.14.0-362 kernel.
+  redhat-8.9/el8 4.18.0-513 kernel and on redhat-9.6/el9 to the 5.14.0-570 kernel.
 
 - this wrapfs version fixes some bugs when mounted on top of a remote filesystem.
   It also includes some simplifications for the lookup-, locking- & mmap-code based 

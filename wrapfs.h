@@ -51,6 +51,18 @@
 #define USE_RH7_INSTANTIATE_NEW 1
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+#define USE_MNT_IDMAP 1
+#elif defined(RHEL_MAJOR) && RHEL_MAJOR == 9 && defined(RHEL_MINOR) && RHEL_MINOR >= 6 && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+#define USE_MNT_IDMAP 1
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
+#define USE_INODE_ALLOC_SB 1
+#elif defined(RHEL_MAJOR) && RHEL_MAJOR == 9 && defined(RHEL_MINOR) && RHEL_MINOR >= 6 && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+#define USE_INODE_ALLOC_SB 1
+#endif
+
 /* wrapfs root inode number */
 #define WRAPFS_ROOT_INO     1
 

@@ -100,7 +100,11 @@ static struct inode *wrapfs_alloc_inode(struct super_block *sb)
 {
 	struct wrapfs_inode_info *i;
 
+#ifdef USE_INODE_ALLOC_SB
+	i = alloc_inode_sb(sb, wrapfs_inode_cachep, GFP_KERNEL);
+#else
 	i = kmem_cache_alloc(wrapfs_inode_cachep, GFP_KERNEL);
+#endif
 	if (!i)
 		return NULL;
 
