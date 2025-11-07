@@ -840,7 +840,10 @@ static int wrapfs_getattr(const struct path *path, struct kstat *stat,
 		 * might have changed after the last revalidate.
 		 */
 		fsstack_copy_inode_size(d_inode(dentry), wrapfs_lower_inode(d_inode(dentry)));
-#if USE_MNT_IDMAP
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+		generic_fillattr(mnt_idmap(lower_path->mnt), request_mask,
+                                 d_inode(dentry), stat);
+#elif USE_MNT_IDMAP
 		generic_fillattr(mnt_idmap(lower_path->mnt), d_inode(dentry), stat);
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
 		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
@@ -848,7 +851,10 @@ static int wrapfs_getattr(const struct path *path, struct kstat *stat,
 		generic_fillattr(d_inode(dentry), stat);
 #endif
 	} else {
-#if USE_MNT_IDMAP
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+		generic_fillattr(mnt_idmap(lower_path->mnt), request_mask,
+                                 d_inode(dentry), stat);
+#elif USE_MNT_IDMAP
 		generic_fillattr(mnt_idmap(lower_path->mnt), d_inode(dentry), stat);
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
 		generic_fillattr(mnt_user_ns(lower_path->mnt), d_inode(dentry), stat);
