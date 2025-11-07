@@ -274,6 +274,15 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 			struct file_lock_context *ctx = smp_load_acquire(&inode_lower->i_flctx);
 			if (ctx && !list_empty_careful(&ctx->flc_flock)) {
 				spin_lock(&ctx->flc_lock);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+				list_for_each_entry(fl, &ctx->flc_flock, c.flc_list) {
+					if (fl->c.flc_file == lower_file) {
+						owner = fl->c.flc_owner;
+						o++;
+					}
+					n++;
+				}
+#else
 				list_for_each_entry(fl, &ctx->flc_flock, fl_list) {
 					if (fl->fl_file == lower_file) {
 						owner = fl->fl_owner;
@@ -281,6 +290,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 					}
 					n++;
 				}
+#endif
 				spin_unlock(&ctx->flc_lock);
 			}
 			if (o) {
@@ -290,12 +300,21 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 				struct file_lock fl;
 
 				locks_init_lock(&fl);
-			        fl.fl_owner = owner;
-			        fl.fl_pid = current->tgid;
-			        fl.fl_file = lower_file;
-			        fl.fl_flags = FL_FLOCK | FL_CLOSE;
-			        fl.fl_type = F_UNLCK;
-			        fl.fl_end = OFFSET_MAX;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+				fl.c.flc_owner = owner;
+				fl.c.flc_pid = current->tgid;
+				fl.c.flc_file = lower_file;
+				fl.c.flc_flags = FL_FLOCK | FL_CLOSE;
+				fl.c.flc_type = F_UNLCK;
+				fl.fl_end = OFFSET_MAX;
+#else
+				fl.fl_owner = owner;
+				fl.fl_pid = current->tgid;
+				fl.fl_file = lower_file;
+				fl.fl_flags = FL_FLOCK | FL_CLOSE;
+				fl.fl_type = F_UNLCK;
+				fl.fl_end = OFFSET_MAX;
+#endif
 #else
 				struct file_lock fl = {
 			                .fl_owner = owner,
@@ -320,6 +339,15 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 			}
 			if (ctx && !list_empty_careful(&ctx->flc_posix)) {
 				spin_lock(&ctx->flc_lock);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+				list_for_each_entry(fl, &ctx->flc_posix, c.flc_list) {
+					if (fl->c.flc_file == lower_file) {
+						owner = fl->c.flc_owner;
+						o++;
+					}
+					n++;
+				}
+#else
 				list_for_each_entry(fl, &ctx->flc_posix, fl_list) {
 					if (fl->fl_file == lower_file) {
 						owner = fl->fl_owner;
@@ -327,6 +355,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 					}
 					n++;
 				}
+#endif
 				spin_unlock(&ctx->flc_lock);
 			}
 #else
@@ -519,11 +548,19 @@ static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 	 *
 	 * posix locks use 'fl->fl_owner == current->files' here.
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	pr_debug("wrapfs: lock(%pD4, %d, t=0x%x, fl=0x%x, r=%lld:%lld)\n", filp, cmd, fl->c.flc_type, fl->c.flc_flags, (long long)fl->fl_start, (long long)fl->fl_end);
+#else
 	pr_debug("wrapfs: lock(%pD4, %d, t=0x%x, fl=0x%x, r=%lld:%lld)\n", filp, cmd, fl->fl_type, fl->fl_flags, (long long)fl->fl_start, (long long)fl->fl_end);
+#endif
 
 	lower_file = wrapfs_lower_file(filp);
 	get_file(lower_file); /* prevent lower_file from being released */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	fl->c.flc_file = lower_file;
+#else
 	fl->fl_file = lower_file;
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 	if (lower_file->f_op && lower_file->f_op->lock && is_remote_lock(lower_file)) {
 #else
@@ -533,7 +570,11 @@ static int wrapfs_lock(struct file *filp, int cmd, struct file_lock *fl)
 	} else {
 		err = posix_lock_file(lower_file, fl, NULL);
 	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	fl->c.flc_file = filp;
+#else
 	fl->fl_file = filp;
+#endif
 	fput(lower_file);
 	return err;
 }
@@ -549,11 +590,19 @@ static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
 	 *
 	 * flocks use 'fl->fl_owner == filp' here.
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	pr_debug("wrapfs: flock(%pD4, %d, t=0x%x, fl=0x%x)\n", filp, cmd, fl->c.flc_type, fl->c.flc_flags);
+#else
 	pr_debug("wrapfs: flock(%pD4, %d, t=0x%x, fl=0x%x)\n", filp, cmd, fl->fl_type, fl->fl_flags);
+#endif
 
 	lower_file = wrapfs_lower_file(filp);
 	get_file(lower_file); /* prevent lower_file from being released */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	fl->c.flc_file = lower_file;
+#else
 	fl->fl_file = lower_file;
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 	if (lower_file->f_op && lower_file->f_op->flock && is_remote_lock(lower_file)) {
 #else
@@ -563,7 +612,11 @@ static int wrapfs_flock(struct file *filp, int cmd, struct file_lock *fl)
 	} else {
 		err = locks_lock_file_wait(lower_file, fl);
 	}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+	fl->c.flc_file = filp;
+#else
 	fl->fl_file = filp;
+#endif
 	fput(lower_file);
 	return err;
 }
