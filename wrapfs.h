@@ -32,6 +32,10 @@
 #include <linux/pagemap.h>
 #include <linux/version.h>
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+#include <linux/filelock.h>
+#endif
+
 /* the file system name */
 #define WRAPFS_NAME "wrapfs"
 
