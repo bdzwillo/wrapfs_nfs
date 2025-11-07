@@ -70,7 +70,7 @@ static int wrapfs_inode_set(struct inode *inode, void *lower_inode)
 	return 0;
 }
 
-struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
+static struct inode *_wrapfs_iget(struct super_block *sb, struct inode *lower_inode)
 {
 	struct inode *inode; /* the new inode to return */
 

@@ -125,7 +125,7 @@ out:
 	return err;
 }
 
-struct dentry *wrapfs_mount(struct file_system_type *fs_type, int flags,
+static struct dentry *wrapfs_mount(struct file_system_type *fs_type, int flags,
 			    const char *dev_name, void *raw_data)
 {
 	void *lower_path_name = (void *) dev_name;
