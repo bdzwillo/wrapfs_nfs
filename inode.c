@@ -196,7 +196,11 @@ static int wrapfs_unlink(struct inode *dir, struct dentry *dentry)
 	fsstack_copy_inode_size(dir, lower_dir_inode);
 	set_nlink(d_inode(dentry),
 		  wrapfs_lower_inode(d_inode(dentry))->i_nlink);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	inode_set_ctime_to_ts(d_inode(dentry), inode_get_ctime(dir));
+#else
 	d_inode(dentry)->i_ctime = dir->i_ctime;
+#endif
 out:
 	dput(lower_dentry);
 	inode_unlock(lower_dir_inode);
