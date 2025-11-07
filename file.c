@@ -240,7 +240,11 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 	lower_file = wrapfs_lower_file(file);
 	if (lower_file) {
 #if defined(WRAP_REMOTE_FILE_LOCKS)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+		struct inode *inode_lower = file_inode(lower_file);
+#else
 		struct inode *inode_lower = locks_inode(lower_file);
+#endif
 
 		/* Avoid 'leftover lock' warnings from locks_remove_file() when
 		 * a process does not unlock a posix lock.
