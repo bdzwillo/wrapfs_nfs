@@ -64,6 +64,7 @@ static ssize_t wrapfs_write(struct file *file, const char __user *buf,
 #endif
 
 /* For ->iterate() the caller holds the file->f_inode lock.
+ * For ->iterate_shared() the caller holds the file->f_inode read lock, and the file f_pos_lock write lock.
  * (see: Documentation/filesystems/locking)
  */
 static int wrapfs_readdir(struct file *file, struct dir_context *ctx)
@@ -641,7 +642,11 @@ const struct file_operations wrapfs_main_fops = {
 const struct file_operations wrapfs_dir_fops = {
 	.llseek		= wrapfs_file_llseek,
 	.read		= generic_read_dir,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
+	.iterate_shared	= wrapfs_readdir,
+#else
 	.iterate	= wrapfs_readdir,
+#endif
 	.unlocked_ioctl	= wrapfs_unlocked_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= wrapfs_compat_ioctl,
