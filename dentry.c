@@ -17,7 +17,12 @@
  *          0: tell VFS to invalidate dentry (calls d_invalidate(dentry) there)
  *          1: dentry is valid
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
+static int wrapfs_d_revalidate(struct inode *dir, const struct qstr *name,
+                               struct dentry *dentry, unsigned int flags)
+#else
 static int wrapfs_d_revalidate(struct dentry *dentry, unsigned int flags)
+#endif
 {
 	struct dentry *lower_dentry;
 	int ret = 1;
@@ -36,7 +41,18 @@ static int wrapfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	lower_dentry = wrapfs_get_lower_dentry(dentry);
 	if (!(lower_dentry->d_flags & DCACHE_OP_REVALIDATE))
 		goto out;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
+	{
+		struct inode *lower_dir = wrapfs_lower_inode(dir);
+		struct name_snapshot n;
+
+		take_dentry_name_snapshot(&n, lower_dentry);
+		ret = lower_dentry->d_op->d_revalidate(lower_dir, &n.name, lower_dentry, flags);
+		release_dentry_name_snapshot(&n);
+	}
+#else
 	ret = lower_dentry->d_op->d_revalidate(lower_dentry, flags);
+#endif
 
 	pr_debug("wrapfs: revalidate(%pd4, 0x%04x) = %d", dentry, flags, ret);
 
