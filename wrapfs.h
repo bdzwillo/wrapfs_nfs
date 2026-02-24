@@ -34,6 +34,8 @@
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 #include <linux/filelock.h>
+#elif defined(RHEL_MAJOR) && RHEL_MAJOR == 9 && defined(RHEL_MINOR) && RHEL_MINOR >= 7 && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+#include <linux/filelock.h>
 #endif
 
 /* the file system name */
