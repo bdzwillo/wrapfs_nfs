@@ -32,6 +32,10 @@
 #include <linux/pagemap.h>
 #include <linux/version.h>
 
+#if defined(RHEL_MAJOR) && RHEL_MAJOR == 9 && defined(RHEL_MINOR) && RHEL_MINOR >= 7
+#include <linux/filelock.h>
+#endif
+
 /* the file system name */
 #define WRAPFS_NAME "wrapfs"
 
