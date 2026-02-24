@@ -67,6 +67,12 @@
 #define USE_INODE_ALLOC_SB 1
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+#define USE_FILE_INODE 1
+#elif defined(RHEL_MAJOR) && RHEL_MAJOR == 9 && defined(RHEL_MINOR) && RHEL_MINOR >= 7 && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+#define USE_FILE_INODE 1
+#endif
+
 /* wrapfs root inode number */
 #define WRAPFS_ROOT_INO     1
 

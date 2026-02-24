@@ -240,7 +240,7 @@ static int wrapfs_file_release(struct inode *inode, struct file *file)
 	lower_file = wrapfs_lower_file(file);
 	if (lower_file) {
 #if defined(WRAP_REMOTE_FILE_LOCKS)
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+#ifdef USE_FILE_INODE
 		struct inode *inode_lower = file_inode(lower_file);
 #else
 		struct inode *inode_lower = locks_inode(lower_file);
